@@ -10,3 +10,14 @@
 #include <vector>
 #include <libsdb/breakpoint_site.hpp>
 #include <libsdb/stoppoint_collection.hpp>
+#include <libsdb/bit.hpp>
+#include <libsdb/watchpoint.hpp>
+#include <unordered_map>
+#include <csignal>
+#include <functional>
+
+namespace sdb {
+
+	class syscall_catch_policy {
+	public:
+		enum mode {
