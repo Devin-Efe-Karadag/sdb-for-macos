@@ -9,6 +9,21 @@
 #include <unistd.h>
 #include <unordered_set>
 #include <limits>
+
+namespace {
+void check(kern_return_t k, const char* what) {
+    if (k != KERN_SUCCESS) sdb::error::send(std::string(what) + ": " + mach_error_string(k));
+}
+int wait_child(pid_t pid) {
+    int status;
+
+    while (waitpid(pid, &status, 0) < 0) if (errno != EINTR) sdb::error::send_errno("waitpid");
+
+    return status;
+}
+void trace(int request, pid_t pid, int signal = 0) {
+    if (ptrace(request, pid, reinterpret_cast<caddr_t>(1), signal) < 0) sdb::error::send_errno("ptrace");
+}
 }
 std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path, bool debug, std::optional<int> output, const std::vector<std::string>& arguments) {
     pipe channel(true);
@@ -47,3 +62,18 @@ std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path, b
         auto proc = std::unique_ptr<process>(new process(pid, true, debug));
 
         return proc;
+}
+void sdb::process::resume_all_threads(){resume();}
+void sdb::process::step_over_breakpoint(pid_t t){if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(t)))step_instruction(t);}
+sdb::stop_reason sdb::process::step_instruction(std::optional<pid_t> tid) {
+    auto t=tid.value_or(current_thread_);current_thread_=t;
+    if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(t))){bp=&breakpoint_sites_.get_by_address(get_pc(t));bp->disable();}
+    for(auto [other,port]:ports_)if(other!=t){check(thread_suspend(port),"suspend other thread for step");suspended.push_back(port);}
+    check(thread_set_state(ports_.at(t),ARM_DEBUG_STATE64,reinterpret_cast<thread_state_t>(&debug),ARM_DEBUG_STATE64_COUNT),"enable selected-thread step");
+    trace(t==main_thread_?PT_STEP:PT_CONTINUE,pid_);state_=process_state::running;
+    for(auto port:suspended)thread_resume(port);
+    return reason;
+sdb::stop_reason sdb::process::wait_on_signal(pid_t) {
+    for(;;){
+        if(state_!=process_state::stopped)return r;
+        r.tid=current_thread_;

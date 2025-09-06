@@ -31,3 +31,14 @@ namespace sdb {
 		static syscall_catch_policy catch_none() {
 			return { mode::none, {} };
 		}
+
+		static syscall_catch_policy catch_some(std::vector<int> to_catch) {
+			return { mode::some, std::move(to_catch) };
+		}
+
+		mode get_mode() const { return mode_; }
+		const std::vector<int>& get_to_catch() const { return to_catch_; }
+
+	private:
+		syscall_catch_policy(mode mode, std::vector<int> to_catch) :
+			mode_(mode), to_catch_(std::move(to_catch)) {}
