@@ -21,3 +21,13 @@ namespace sdb {
 	class syscall_catch_policy {
 	public:
 		enum mode {
+			none, some, all
+		};
+
+		static syscall_catch_policy catch_all() {
+			return { mode::all, {} };
+		}
+
+		static syscall_catch_policy catch_none() {
+			return { mode::none, {} };
+		}

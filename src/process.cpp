@@ -26,6 +26,8 @@ std::unique_ptr<sdb::process> sdb::process::launch(std::filesystem::path path, b
         channel.close_read();
 
         if (output && dup2(*output, STDOUT_FILENO) < 0) _exit(126);
+
+        if (debug && ptrace(PT_TRACE_ME, 0, nullptr, 0) < 0) _exit(126);
         execvp(path.c_str(), exec_arguments.data());
 
         int code = errno;
