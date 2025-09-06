@@ -42,3 +42,15 @@ namespace sdb {
 	private:
 		syscall_catch_policy(mode mode, std::vector<int> to_catch) :
 			mode_(mode), to_catch_(std::move(to_catch)) {}
+
+		mode mode_ = mode::none;
+		std::vector<int> to_catch_;
+	};
+
+	struct syscall_information {
+		std::uint16_t id;
+		bool entry;
+		union {
+			std::array<std::uint64_t, 6> args;
+			std::int64_t ret;
+		};
