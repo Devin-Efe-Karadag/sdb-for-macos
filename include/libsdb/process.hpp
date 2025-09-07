@@ -54,3 +54,14 @@ namespace sdb {
 			std::array<std::uint64_t, 6> args;
 			std::int64_t ret;
 		};
+	};
+
+	enum class process_state {
+		stopped,
+		running,
+		exited,
+		terminated
+	};
+
+	enum class trap_type {
+		single_step, software_break,

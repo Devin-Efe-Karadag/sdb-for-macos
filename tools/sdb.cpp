@@ -59,3 +59,33 @@ namespace {
 		auto current_line = 1u;
 		while (current_line != start_line && file.get(c)) {
 			if (c == '\n') {
+				++current_line;
+			}
+		}
+
+		auto print_line_start = [&](auto current_line) {
+			auto fill_width = static_cast<int>(
+				std::floor(std::log10(end_line))) + 1;
+			auto arrow = current_line == line ? ">" : " ";
+			fmt::print("{} {:>{}} ", arrow, current_line, fill_width);
+			};
+
+		print_line_start(current_line);
+		while (current_line <= end_line && file.get(c)) {
+			std::cout << c;
+			if (c == '\n') {
+				++current_line;
+				print_line_start(current_line);
+			}
+		}
+
+		std::cout << std::endl;
+	}
+
+	void print_disassembly(sdb::process& process,
+		sdb::virt_addr address, std::size_t n_instructions) {
+		sdb::disassembler dis(process);
+		auto instructions = dis.disassemble(n_instructions, address);
+		for (auto& instr : instructions) {
+			fmt::print("{:#018x}: {}\n", instr.address.addr(), instr.text);
+		}

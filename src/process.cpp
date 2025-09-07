@@ -76,6 +76,26 @@ std::unique_ptr<sdb::process> sdb::process::attach(pid_t pid) {
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
     trace(PT_ATTACH, pid);
+#pragma clang diagnostic pop
+    wait_child(pid);
+    try { return std::unique_ptr<process>(new process(pid, false, true)); }
+    catch (...) { ptrace(PT_DETACH, pid, reinterpret_cast<caddr_t>(1), 0); throw; }
+}
+sdb::process::~process() {
+    if (state_ != process_state::exited && state_ != process_state::terminated) {
+        if (terminate_on_end_) {
+            if (is_attached_) { ptrace(PT_KILL, pid_, nullptr, 0); ptrace(PT_CONTINUE, pid_, reinterpret_cast<caddr_t>(1), 0); }
+            else kill(pid_, SIGKILL);
+
+            int status; while (waitpid(pid_, &status, 0) < 0 && errno == EINTR) {}
+        } else if (is_attached_) {
+            try {
+                if (state_ == process_state::running) { kill(pid_, SIGSTOP); wait_child(pid_); }
+                breakpoint_sites_.for_each([](auto& b) { b.disable(); });
+                watchpoints_.for_each([](auto& w) { w.disable(); });
+            } catch (...) {}
+            ptrace(PT_DETACH, pid_, reinterpret_cast<caddr_t>(1), 0);
+            kill(pid_, SIGCONT);
 }
 void sdb::process::resume_all_threads(){resume();}
 void sdb::process::step_over_breakpoint(pid_t t){if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(t)))step_instruction(t);}
