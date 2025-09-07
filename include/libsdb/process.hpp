@@ -65,3 +65,15 @@ namespace sdb {
 
 	enum class trap_type {
 		single_step, software_break,
+		hardware_break, syscall, clone, unknown
+	};
+
+	struct stop_reason {
+		stop_reason() = default;
+		stop_reason(pid_t tid, int wait_status);
+
+		stop_reason(pid_t tid, process_state reason, std::uint8_t info,
+			std::optional<trap_type> trap_reason = std::nullopt,
+			std::optional<syscall_information> syscall_info = std::nullopt)
+			: reason(reason)
+			, info(info)

@@ -96,6 +96,19 @@ sdb::process::~process() {
             } catch (...) {}
             ptrace(PT_DETACH, pid_, reinterpret_cast<caddr_t>(1), 0);
             kill(pid_, SIGCONT);
+        }
+    }
+    if (task_) mach_port_deallocate(mach_task_self(), task_);
+void sdb::process::populate_existing_threads() {
+    if (!task_) check(task_for_pid(mach_task_self(), pid_, &task_), "task_for_pid (sign sdb with its debugger entitlement)");
+    check(task_threads(task_, &list, &count), "task_threads");
+    for (unsigned i=0; i<count; ++i) {
+        thread_identifier_info_data_t info{}; mach_msg_type_number_t size = THREAD_IDENTIFIER_INFO_COUNT;
+        auto id = static_cast<pid_t>(info.thread_id);
+        if(!main_thread_) main_thread_=id;
+            ports_[id] = list[i];
+            if (!ports_.count(current_thread_)) current_thread_ = id;
+        } else mach_port_deallocate(mach_task_self(), list[i]);
 }
 void sdb::process::resume_all_threads(){resume();}
 void sdb::process::step_over_breakpoint(pid_t t){if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(t)))step_instruction(t);}
