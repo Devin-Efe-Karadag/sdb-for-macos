@@ -77,3 +77,14 @@ namespace sdb {
 			std::optional<syscall_information> syscall_info = std::nullopt)
 			: reason(reason)
 			, info(info)
+			, trap_reason(trap_reason)
+			, syscall_info(syscall_info)
+			, tid(tid)
+		{}
+
+		bool is_step() const {
+			return reason == process_state::stopped
+				and info == SIGTRAP
+				and trap_reason == trap_type::single_step;
+		}
+		bool is_breakpoint() const {

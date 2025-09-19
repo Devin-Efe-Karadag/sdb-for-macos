@@ -98,17 +98,41 @@ sdb::process::~process() {
             kill(pid_, SIGCONT);
         }
     }
+
+    for (auto [id, port] : ports_) mach_port_deallocate(mach_task_self(), port);
+
     if (task_) mach_port_deallocate(mach_task_self(), task_);
+}
 void sdb::process::populate_existing_threads() {
+    if (!is_attached_) return;
+
     if (!task_) check(task_for_pid(mach_task_self(), pid_, &task_), "task_for_pid (sign sdb with its debugger entitlement)");
+    thread_act_array_t list; mach_msg_type_number_t count;
     check(task_threads(task_, &list, &count), "task_threads");
+
+    std::unordered_set<pid_t> live;
+
     for (unsigned i=0; i<count; ++i) {
         thread_identifier_info_data_t info{}; mach_msg_type_number_t size = THREAD_IDENTIFIER_INFO_COUNT;
+
+        auto k = thread_info(list[i], THREAD_IDENTIFIER_INFO, reinterpret_cast<thread_info_t>(&info), &size);
+
+        if (k != KERN_SUCCESS || info.thread_id > std::numeric_limits<pid_t>::max()) { mach_port_deallocate(mach_task_self(), list[i]); continue; }
+
         auto id = static_cast<pid_t>(info.thread_id);
+        live.insert(id);
+
         if(!main_thread_) main_thread_=id;
+
+        if (!ports_.count(id)) {
             ports_[id] = list[i];
+            threads_.emplace(id, thread_state{id, registers(*this,id)});
+
             if (!ports_.count(current_thread_)) current_thread_ = id;
+
+            if (target_) report_thread_lifecycle_event(stop_reason(id, process_state::stopped, SIGSTOP));
         } else mach_port_deallocate(mach_task_self(), list[i]);
+        read_all_registers(id);
 }
 void sdb::process::resume_all_threads(){resume();}
 void sdb::process::step_over_breakpoint(pid_t t){if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(t)))step_instruction(t);}
