@@ -133,6 +133,13 @@ void sdb::process::populate_existing_threads() {
             if (target_) report_thread_lifecycle_event(stop_reason(id, process_state::stopped, SIGSTOP));
         } else mach_port_deallocate(mach_task_self(), list[i]);
         read_all_registers(id);
+    }
+    vm_deallocate(mach_task_self(), reinterpret_cast<vm_address_t>(list), count*sizeof(thread_t));
+
+    for (auto it=ports_.begin();it!=ports_.end();) {
+        if (!live.count(it->first)) {
+            report_thread_lifecycle_event(stop_reason(it->first, process_state::exited, 0));
+            threads_.erase(it->first); mach_port_deallocate(mach_task_self(),it->second); it=ports_.erase(it);
 }
 void sdb::process::resume_all_threads(){resume();}
 void sdb::process::step_over_breakpoint(pid_t t){if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(t)))step_instruction(t);}

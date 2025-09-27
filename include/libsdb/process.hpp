@@ -88,3 +88,14 @@ namespace sdb {
 				and trap_reason == trap_type::single_step;
 		}
 		bool is_breakpoint() const {
+			return reason == process_state::stopped
+				and info == SIGTRAP
+				and (trap_reason == trap_type::software_break
+					or trap_reason == trap_type::hardware_break);
+		}
+
+		process_state reason;
+		std::uint8_t info;
+		std::optional<trap_type> trap_reason;
+		std::optional<syscall_information> syscall_info;
+		pid_t tid;

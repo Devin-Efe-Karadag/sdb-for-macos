@@ -119,3 +119,33 @@ namespace {
 	void wait_on_signal(pid_t pid) {
 		int wait_status;
 		int options = 0;
+		if (waitpid(pid, &wait_status, options) < 0) {
+			std::perror("waitpid failed");
+			std::exit(-1);
+		}
+	}
+
+	void handle_command(
+		pid_t pid, std::string_view line) {
+		auto args = split(line, ' ');
+		auto command = args[0];
+
+		if (is_prefix(command, "continue")) {
+			resume(pid);
+			wait_on_signal(pid);
+		}
+		else {
+			std::cerr << "Unknown command\n";
+		}
+	}
+
+	void thread_lifecycle_callback(const sdb::stop_reason& reason) {
+		std::string_view action;
+		switch (reason.reason) {
+		case sdb::process_state::exited: action = "exited"; break;
+		case sdb::process_state::terminated: action = "terminated"; break;
+		case sdb::process_state::stopped: action = "created"; break;
+		case sdb::process_state::running: return;
+		}
+		fmt::print("Thread {} {}\n", reason.tid, action);
+	}
