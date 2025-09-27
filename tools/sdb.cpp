@@ -89,3 +89,33 @@ namespace {
 		for (auto& instr : instructions) {
 			fmt::print("{:#018x}: {}\n", instr.address.addr(), instr.text);
 		}
+	}
+
+	std::vector<std::string> split(std::string_view str, char delimiter) {
+		std::vector<std::string> out{};
+		std::stringstream ss{ std::string{str} };
+		std::string item;
+
+		while (std::getline(ss, item, delimiter)) {
+			out.push_back(item);
+		}
+
+		return out;
+	}
+
+	bool is_prefix(std::string_view str, std::string_view of) {
+		if (str.size() > of.size()) return false;
+		return std::equal(str.begin(), str.end(), of.begin());
+	}
+
+	void resume(pid_t pid) {
+        if (ptrace(PT_CONTINUE, pid, reinterpret_cast<caddr_t>(1), 0) < 0)
+        {
+			std::cerr << "Couldn't continue\n";
+			std::exit(-1);
+		}
+	}
+
+	void wait_on_signal(pid_t pid) {
+		int wait_status;
+		int options = 0;
