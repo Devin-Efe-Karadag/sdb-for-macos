@@ -149,3 +149,33 @@ namespace {
 		}
 		fmt::print("Thread {} {}\n", reason.tid, action);
 	}
+
+    std::string get_sigtrap_info(
+        const sdb::process& process, sdb::stop_reason reason) {
+        if (reason.trap_reason == sdb::trap_type::software_break) {
+            auto& site = process.breakpoint_sites().get_by_address(process.get_pc(reason.tid));
+
+            return fmt::format(" (breakpoint {})", site.id());
+        }
+
+		if (reason.trap_reason == sdb::trap_type::hardware_break) {
+			auto id = process.get_current_hardware_stoppoint(reason.tid);
+
+			if (id.index() == 0) {
+				return fmt::format(" (breakpoint {})", std::get<0>(id));
+			}
+
+			std::string message;
+			auto& point = process.watchpoints().get_by_id(std::get<1>(id));
+			message += fmt::format(" (watchpoint {})", point.id());
+
+			if (point.data() == point.previous_data()) {
+				message += fmt::format("\nValue: {:#x}", point.data());
+			}
+			else {
+				message += fmt::format("\nOld value: {:#x}\nNew value: {:#x}",
+					point.previous_data(), point.data());
+			}
+			return message;
+		}
+		if (reason.trap_reason == sdb::trap_type::single_step) {

@@ -140,6 +140,18 @@ void sdb::process::populate_existing_threads() {
         if (!live.count(it->first)) {
             report_thread_lifecycle_event(stop_reason(it->first, process_state::exited, 0));
             threads_.erase(it->first); mach_port_deallocate(mach_task_self(),it->second); it=ports_.erase(it);
+    if (!ports_.empty() && !ports_.count(current_thread_)) current_thread_=ports_.begin()->first;
+}
+void sdb::process::read_all_registers(pid_t tid) {
+    auto& data=threads_.at(tid).regs.data_;
+    mach_msg_type_number_t n=ARM_THREAD_STATE64_COUNT;
+    check(thread_get_state(ports_.at(tid), ARM_THREAD_STATE64, reinterpret_cast<thread_state_t>(&data.regs), &n), "read ARM registers");
+    n=ARM_NEON_STATE64_COUNT;
+    check(thread_get_state(ports_.at(tid), ARM_NEON_STATE64, reinterpret_cast<thread_state_t>(&data.i387), &n), "read NEON registers");
+}
+sdb::registers& sdb::process::get_registers(std::optional<pid_t> tid) { return threads_.at(tid.value_or(current_thread_)).regs; }
+const sdb::registers& sdb::process::get_registers(std::optional<pid_t> tid) const { return threads_.at(tid.value_or(current_thread_)).regs; }
+void sdb::process::write_gprs(const user_regs_struct& r,std::optional<pid_t> tid) {
 }
 void sdb::process::resume_all_threads(){resume();}
 void sdb::process::step_over_breakpoint(pid_t t){if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(t)))step_instruction(t);}

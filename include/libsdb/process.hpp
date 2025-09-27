@@ -99,3 +99,14 @@ namespace sdb {
 		std::optional<trap_type> trap_reason;
 		std::optional<syscall_information> syscall_info;
 		pid_t tid;
+	};
+
+	struct thread_state {
+		pid_t tid;
+		registers regs;
+		stop_reason reason;
+		process_state state = process_state::stopped;
+		bool pending_sigstop = false;
+	};
+
+	class target;

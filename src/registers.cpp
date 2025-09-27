@@ -38,3 +38,48 @@ namespace {
         return from_bytes<long double>(bytes + info.offset);
     else if (info.format == register_format::vector and info.size == 8) {
     }
+        return from_bytes<byte128>(bytes + info.offset);
+    }
+}
+
+void sdb::registers::write(const register_info& info, value val, bool commit) {
+    auto bytes = as_bytes(data_);
+
+    std::visit([&](auto& v) {
+        if (sizeof(v) <= info.size) {
+            auto wide = widen(info, v);
+
+            auto val_bytes = as_bytes(wide);
+
+            std::copy(val_bytes, val_bytes + info.size, bytes + info.offset);
+        }
+        else {
+            std::cerr << "sdb::register::write called with mismatched"
+                "register and value sizes";
+            std::terminate();
+        }
+        }, val);
+        }
+        else {
+            if (info.type == register_type::sub_gpr) {
+                std::fill(bytes + info.offset + 4, bytes + info.offset + 8, std::byte{});
+            }
+            proc_->write_gprs(data_.regs, tid_);
+        }
+    }
+}
+
+void sdb::registers::flush() {
+    proc_->write_fprs(data_.i387, tid_);
+    proc_->write_gprs(data_.regs, tid_);
+}
+
+bool sdb::registers::is_undefined(register_id id) const {
+    std::size_t canonical_offset = register_info_by_id(id).offset >> 1;
+
+    return std::find(begin(undefined_), end(undefined_), canonical_offset)
+        != end(undefined_);
+}
+
+void sdb::registers::undefine(register_id id) {
+    undefined_.push_back(canonical_offset);
