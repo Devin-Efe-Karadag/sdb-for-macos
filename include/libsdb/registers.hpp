@@ -31,3 +31,14 @@ namespace sdb {
         void write_by_id(register_id id, value val, bool commit = true) {
             write(register_info_by_id(id), val, commit);
         }
+
+        bool is_undefined(register_id id) const;
+        void undefine(register_id id);
+
+        virt_addr cfa() const { return cfa_; }
+        void set_cfa(virt_addr addr) { cfa_ = addr; }
+        void flush();
+
+    private:
+        friend process;
+        registers(process& proc, pid_t tid) : proc_(&proc), tid_(tid) {}

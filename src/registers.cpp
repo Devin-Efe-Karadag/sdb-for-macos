@@ -59,6 +59,10 @@ void sdb::registers::write(const register_info& info, value val, bool commit) {
             std::terminate();
         }
         }, val);
+
+    if (commit) {
+        if (info.type == register_type::fpr) {
+            proc_->write_fprs(data_.i387, tid_);
         }
         else {
             if (info.type == register_type::sub_gpr) {

@@ -179,3 +179,34 @@ namespace {
 			return message;
 		}
 		if (reason.trap_reason == sdb::trap_type::single_step) {
+			return " (single step)";
+		}
+		if (reason.trap_reason == sdb::trap_type::syscall) {
+			const auto& info = *reason.syscall_info;
+			std::string message;
+			if (info.entry) {
+				message += "(syscall entry)\n";
+				message += fmt::format("syscall: {}({:#x})",
+					sdb::syscall_id_to_name(info.id),
+					fmt::join(info.args, ","));
+			}
+			else {
+				message += "(syscall exit)\n";
+				message += fmt::format("syscall returned: {:#x}", info.ret);
+			}
+			return message;
+		}
+
+		return "";
+	}
+
+	std::string get_signal_stop_reason(
+		const sdb::target& target, sdb::stop_reason reason) {
+		auto& process = target.get_process();
+		auto pc = process.get_pc(reason.tid);
+		std::string message = fmt::format("stopped with signal {} at {:#x}",
+			strsignal(reason.info), pc.addr());
+
+		auto line = target.line_entry_at_pc(reason.tid);
+		if (line != sdb::line_table::iterator()) {
+			auto file = line->file_entry->path.filename().string();
