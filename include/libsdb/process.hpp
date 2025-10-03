@@ -120,3 +120,15 @@ namespace sdb {
 		static std::unique_ptr<process> attach(pid_t pid);
 
         mach_port_t task_port() const { return task_; }
+
+        std::filesystem::path executable_path() const;
+
+        std::uint64_t image_load_address() const;
+		void resume(std::optional<pid_t> otid = std::nullopt);
+		stop_reason wait_on_signal(pid_t to_await = -1);
+
+		process() = delete;
+		process(const process&) = delete;
+		process& operator=(const process&) = delete;
+
+		process_state state() const { return state_; }

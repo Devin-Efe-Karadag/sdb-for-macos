@@ -240,3 +240,32 @@ namespace {
 				target.get_process().pid(),
 				strsignal(reason.info));
 			return;
+		case sdb::process_state::stopped:
+			fmt::print("Thread {} {}\n",
+				reason.tid, get_signal_stop_reason(target, reason));
+			return;
+		}
+	}
+
+	void print_code_location(sdb::target& target) {
+		if (target.get_stack().has_frames()) {
+			auto& frame = target.get_stack().current_frame();
+			print_source(frame.location.file->path, frame.location.line, 3);
+		}
+		else {
+			print_disassembly(target.get_process(), target.get_process().get_pc(), 5);
+		}
+	}
+
+	void handle_stop(sdb::target& target, sdb::stop_reason reason) {
+		print_stop_reason(target, reason);
+		if (reason.reason == sdb::process_state::stopped) {
+			print_code_location(target);
+		}
+	}
+
+	void print_help(const std::vector<std::string>& args) {
+		if (args.size() == 1) {
+			std::cerr << R"(Available commands:
+    breakpoint  - Commands for operating on breakpoints
+    catchpoint  - Commands for operating on catchpoints

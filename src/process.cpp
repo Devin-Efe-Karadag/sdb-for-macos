@@ -155,6 +155,12 @@ void sdb::process::read_all_registers(pid_t tid) {
 sdb::registers& sdb::process::get_registers(std::optional<pid_t> tid) { return threads_.at(tid.value_or(current_thread_)).regs; }
 const sdb::registers& sdb::process::get_registers(std::optional<pid_t> tid) const { return threads_.at(tid.value_or(current_thread_)).regs; }
 void sdb::process::write_gprs(const user_regs_struct& r,std::optional<pid_t> tid) {
+    check(thread_set_state(ports_.at(tid.value_or(current_thread_)),ARM_THREAD_STATE64,reinterpret_cast<thread_state_t>(const_cast<user_regs_struct*>(&r)),ARM_THREAD_STATE64_COUNT),"write ARM registers");
+}
+void sdb::process::write_fprs(const user_fpregs_struct& r,std::optional<pid_t> tid) {
+    check(thread_set_state(ports_.at(tid.value_or(current_thread_)),ARM_NEON_STATE64,reinterpret_cast<thread_state_t>(const_cast<user_fpregs_struct*>(&r)),ARM_NEON_STATE64_COUNT),"write NEON registers");
+}
+void sdb::process::write_user_area(std::size_t offset,std::uint64_t value,std::optional<pid_t> tid) {
 }
 void sdb::process::resume_all_threads(){resume();}
 void sdb::process::step_over_breakpoint(pid_t t){if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(t)))step_instruction(t);}
