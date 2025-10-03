@@ -143,3 +143,15 @@ namespace sdb {
 		void write_gprs(const user_regs_struct& gprs, std::optional<pid_t> otid = std::nullopt);
 
 		virt_addr get_pc(std::optional<pid_t> otid = std::nullopt) const;
+
+		sdb::stop_reason step_instruction(std::optional<pid_t> otid = std::nullopt);
+
+		breakpoint_site& create_breakpoint_site(
+			virt_addr address,
+			bool hardware = false,
+			bool internal = false);
+
+		stoppoint_collection<breakpoint_site>&
+			breakpoint_sites() { return breakpoint_sites_; }
+
+		const stoppoint_collection<breakpoint_site>&
