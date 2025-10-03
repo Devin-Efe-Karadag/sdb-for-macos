@@ -269,3 +269,34 @@ namespace {
 			std::cerr << R"(Available commands:
     breakpoint  - Commands for operating on breakpoints
     catchpoint  - Commands for operating on catchpoints
+
+    continue    - Resume the process
+    disassemble - Disassemble machine code to assembly
+    down        - Select the stack frame below the current one
+    finish      - Step-out
+    memory      - Commands for operating on memory
+    next        - Step-over
+    register    - Commands for operating on registers
+    step        - Step-in
+    stepi       - Single instruction step
+	thread      - Commands for operating on threads
+    up          - Select the stack frame above the current one
+    variable    - Commands for operating on variables
+    watchpoint  - Commands for operating on watchpoints
+)";
+		}
+		else if (is_prefix(args[1], "memory")) {
+			std::cerr << R"(Available commands:
+    read <address>
+    read <address> <number of bytes>
+    write <address> <bytes>
+)";
+		}
+		else if (is_prefix(args[1], "breakpoint")) {
+			std::cerr << R"(Available commands:
+    list
+    delete <id>
+    disable <id>
+    enable <id>
+    set <address>
+    set <address> -h

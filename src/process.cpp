@@ -161,6 +161,14 @@ void sdb::process::write_fprs(const user_fpregs_struct& r,std::optional<pid_t> t
     check(thread_set_state(ports_.at(tid.value_or(current_thread_)),ARM_NEON_STATE64,reinterpret_cast<thread_state_t>(const_cast<user_fpregs_struct*>(&r)),ARM_NEON_STATE64_COUNT),"write NEON registers");
 }
 void sdb::process::write_user_area(std::size_t offset,std::uint64_t value,std::optional<pid_t> tid) {
+    auto& d=get_registers(tid).data_;
+
+    if (offset+8>sizeof(d.regs)) error::send("Invalid register offset");
+    memcpy(reinterpret_cast<char*>(&d)+offset,&value,8); write_gprs(d.regs,tid);
+void sdb::process::set_pc(virt_addr pc,std::optional<pid_t> tid) {get_registers(tid).write_by_id(register_id::pc,pc.addr());}
+    if (read!=size) error::send("Short memory read"); return data;
+    std::size_t offset=0;
+        check(mach_vm_region_recurse(task_,&region,&region_size,&depth,reinterpret_cast<vm_region_recurse_info_t>(&info),&n),"find memory region");
 }
 void sdb::process::resume_all_threads(){resume();}
 void sdb::process::step_over_breakpoint(pid_t t){if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(t)))step_instruction(t);}

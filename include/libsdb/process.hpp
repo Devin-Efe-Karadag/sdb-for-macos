@@ -132,3 +132,14 @@ namespace sdb {
 		process& operator=(const process&) = delete;
 
 		process_state state() const { return state_; }
+		pid_t pid() const { return pid_; }
+
+		registers& get_registers(std::optional<pid_t> otid = std::nullopt);
+		const registers& get_registers(std::optional<pid_t> otid = std::nullopt) const;
+
+		void write_user_area(std::size_t offset, std::uint64_t data, std::optional<pid_t> otid = std::nullopt);
+
+		void write_fprs(const user_fpregs_struct& fprs, std::optional<pid_t> otid = std::nullopt);
+		void write_gprs(const user_regs_struct& gprs, std::optional<pid_t> otid = std::nullopt);
+
+		virt_addr get_pc(std::optional<pid_t> otid = std::nullopt) const;
