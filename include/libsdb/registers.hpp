@@ -42,3 +42,15 @@ namespace sdb {
     private:
         friend process;
         registers(process& proc, pid_t tid) : proc_(&proc), tid_(tid) {}
+
+        user data_{};
+        process* proc_ = nullptr;
+
+        std::vector<std::size_t> undefined_;
+        virt_addr cfa_;
+
+        pid_t tid_;
+    };
+}
+
+#endif

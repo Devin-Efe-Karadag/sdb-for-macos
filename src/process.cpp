@@ -140,6 +140,9 @@ void sdb::process::populate_existing_threads() {
         if (!live.count(it->first)) {
             report_thread_lifecycle_event(stop_reason(it->first, process_state::exited, 0));
             threads_.erase(it->first); mach_port_deallocate(mach_task_self(),it->second); it=ports_.erase(it);
+        } else ++it;
+    }
+
     if (!ports_.empty() && !ports_.count(current_thread_)) current_thread_=ports_.begin()->first;
 }
 void sdb::process::read_all_registers(pid_t tid) {

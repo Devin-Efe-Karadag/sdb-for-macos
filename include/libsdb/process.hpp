@@ -110,3 +110,13 @@ namespace sdb {
 	};
 
 	class target;
+	class process {
+	public:
+		~process();
+		static std::unique_ptr<process> launch(std::filesystem::path path,
+			bool debug = true,
+			std::optional<int> stdout_replacement = std::nullopt,
+			const std::vector<std::string>& arguments = {});
+		static std::unique_ptr<process> attach(pid_t pid);
+
+        mach_port_t task_port() const { return task_; }

@@ -210,3 +210,33 @@ namespace {
 		auto line = target.line_entry_at_pc(reason.tid);
 		if (line != sdb::line_table::iterator()) {
 			auto file = line->file_entry->path.filename().string();
+			message += fmt::format(", {}:{}", file, line->line);
+		}
+
+		auto func_name = target.function_name_at_address(pc);
+		if (func_name != "") {
+			message += fmt::format(" ({})", func_name);
+		}
+
+		if (reason.info == SIGTRAP) {
+			message += get_sigtrap_info(process, reason);
+		}
+
+		return message;
+	}
+
+	void print_stop_reason(
+		const sdb::target& target, sdb::stop_reason reason) {
+		switch (reason.reason) {
+		case sdb::process_state::running:
+			return;
+		case sdb::process_state::exited:
+			fmt::print("Process {} exited with status {}\n",
+				target.get_process().pid(),
+				static_cast<int>(reason.info));
+			return;;
+		case sdb::process_state::terminated:
+			fmt::print("Process {} terminated with signal {}\n",
+				target.get_process().pid(),
+				strsignal(reason.info));
+			return;
