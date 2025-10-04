@@ -300,3 +300,33 @@ namespace {
     enable <id>
     set <address>
     set <address> -h
+)";
+		}
+
+		else if (is_prefix(args[1], "register")) {
+			std::cerr << R"(Available commands:
+    read
+    read <register>
+    read all
+    write <register> <value>
+)";
+		}
+		else if (is_prefix(args[1], "watchpoint")) {
+			std::cerr << R"(Available commands:
+    list
+    delete <id>
+    disable <id>
+    enable <id>
+    set <address> <write|rw|execute> <size>
+)";
+		}
+		else if (is_prefix(args[1], "disassemble")) {
+			std::cerr << R"(Available options:
+    -c <number of instructions>
+    -a <start address>
+)";
+		}
+		else if (is_prefix(args[1], "catchpoint")) {
+			std::cerr << R"(Available commands:
+    syscall
+    syscall none

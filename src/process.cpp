@@ -166,15 +166,20 @@ void sdb::process::write_user_area(std::size_t offset,std::uint64_t value,std::o
     if (offset+8>sizeof(d.regs)) error::send("Invalid register offset");
     memcpy(reinterpret_cast<char*>(&d)+offset,&value,8); write_gprs(d.regs,tid);
 }
+sdb::virt_addr sdb::process::get_pc(std::optional<pid_t> tid) const {return virt_addr(get_registers(tid).read_by_id_as<std::uint64_t>(register_id::pc));}
 void sdb::process::set_pc(virt_addr pc,std::optional<pid_t> tid) {get_registers(tid).write_by_id(register_id::pc,pc.addr());}
 std::vector<std::byte> sdb::process::read_memory(virt_addr addr,std::size_t size) const {
+    std::vector<std::byte> data(size); if (!size) return data;
+    mach_vm_size_t read=0;
     check(mach_vm_read_overwrite(task_,addr.addr(),size,reinterpret_cast<mach_vm_address_t>(data.data()),&read),"read memory");
 
     if (read!=size) error::send("Short memory read"); return data;
 }
+void sdb::process::write_memory(virt_addr addr,span<const std::byte> data) {
     std::size_t offset=0;
 
     while(offset<data.size()) {
+        mach_vm_address_t region=addr.addr()+offset; mach_vm_size_t region_size=0;
         check(mach_vm_region_recurse(task_,&region,&region_size,&depth,reinterpret_cast<vm_region_recurse_info_t>(&info),&n),"find memory region");
 }
 void sdb::process::resume_all_threads(){resume();}

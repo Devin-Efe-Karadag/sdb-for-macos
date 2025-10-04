@@ -155,3 +155,14 @@ namespace sdb {
 			breakpoint_sites() { return breakpoint_sites_; }
 
 		const stoppoint_collection<breakpoint_site>&
+			breakpoint_sites() const { return breakpoint_sites_; }
+
+		void set_pc(virt_addr address, std::optional<pid_t> otid = std::nullopt);
+
+		std::vector<std::byte> read_memory(
+			virt_addr address, std::size_t amount) const;
+		std::vector<std::byte> read_memory_without_traps(
+			virt_addr address, std::size_t amount) const;
+		void write_memory(virt_addr address, span<const std::byte> data);
+
+		template <class T>
