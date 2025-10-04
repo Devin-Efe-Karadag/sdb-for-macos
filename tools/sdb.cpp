@@ -330,3 +330,33 @@ namespace {
 			std::cerr << R"(Available commands:
     syscall
     syscall none
+    syscall <list of syscall IDs or names>
+)";
+		}
+        else if (is_prefix(args[1], "thread")) {
+            std::cerr << R"(Available commands:
+    list
+    select <thread ID>
+)";
+        }
+		else if (is_prefix(args[1], "variable")) {
+			std::cerr << R"(Available commands:
+    read <variable>
+)";
+		}
+		else {
+			std::cerr << "No help available on that\n";
+		}
+	}
+
+	void print_backtrace(const sdb::target& target) {
+		auto& stack = target.get_stack();
+		auto i = 0;
+		for (auto& frame : stack.frames()) {
+			auto pc = frame.backtrace_report_address;
+			auto func_name = target.function_name_at_address(pc);
+
+			std::string message = i == stack.current_frame_index() ? "*" : " ";
+			message += fmt::format("[{}]: {:#x} {}", i++, pc.addr(), func_name);
+			if (frame.inlined) {
+				message += fmt::format(" [inlined] {}", *frame.func_die.name());
