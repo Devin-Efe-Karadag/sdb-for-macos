@@ -360,3 +360,33 @@ namespace {
 			message += fmt::format("[{}]: {:#x} {}", i++, pc.addr(), func_name);
 			if (frame.inlined) {
 				message += fmt::format(" [inlined] {}", *frame.func_die.name());
+			}
+			fmt::print("{}\n", message);
+		}
+	}
+
+	void handle_register_read(
+		sdb::target& target,
+		const std::vector<std::string>& args) {
+		auto format = [](auto t) {
+			if constexpr (std::is_floating_point_v<decltype(t)>) {
+				return fmt::format("{}", t);
+			}
+			else if constexpr (std::is_integral_v<decltype(t)>) {
+				return fmt::format("{:#0{}x}", t, sizeof(t) * 2 + 2);
+			}
+			else {
+				return fmt::format("[{:#04x}]", fmt::join(t, ","));
+			}
+			};
+
+		auto& regs = target.get_stack().regs();
+		auto print_register_value = [&](auto info) {
+			if (regs.is_undefined(info.id)) {
+				fmt::print("{}:\tundefined\n", info.name);
+			}
+			else {
+				auto value = regs.read(info);
+				fmt::print("{}:\t{}\n", info.name, std::visit(format, value));
+			}
+			};

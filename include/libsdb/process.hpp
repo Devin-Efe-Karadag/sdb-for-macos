@@ -166,3 +166,13 @@ namespace sdb {
 		void write_memory(virt_addr address, span<const std::byte> data);
 
 		template <class T>
+		T read_memory_as(virt_addr address) const {
+			auto data = read_memory(address, sizeof(T));
+			return from_bytes<T>(data.data());
+		}
+
+		std::string read_string(virt_addr address) const;
+
+		int set_hardware_breakpoint(
+			breakpoint_site::id_type id, virt_addr address);
+		void clear_hardware_stoppoint(int index);
