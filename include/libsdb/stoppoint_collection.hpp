@@ -56,3 +56,23 @@ namespace sdb {
 
         points_t stoppoints_;
     };
+
+    template <class Stoppoint, bool Owning>
+    Stoppoint& stoppoint_collection<Stoppoint,Owning>::push(
+        pointer_type bs) {
+        stoppoints_.push_back(std::move(bs));
+
+        return *stoppoints_.back();
+    }
+
+    template <class Stoppoint, bool Owning>
+
+    auto stoppoint_collection<Stoppoint,Owning>::find_by_id(typename Stoppoint::id_type id)
+        -> typename points_t::iterator {
+        return std::find_if(begin(stoppoints_), end(stoppoints_),
+            [=](auto& point) { return point->id() == id; });
+    }
+
+    template <class Stoppoint, bool Owning>
+
+    auto stoppoint_collection<Stoppoint,Owning>::find_by_id(typename Stoppoint::id_type id) const

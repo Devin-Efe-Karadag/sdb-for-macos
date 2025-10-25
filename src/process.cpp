@@ -212,12 +212,26 @@ sdb::stop_reason sdb::process::wait_on_signal(pid_t) {
             }
 
             for(auto& [tid,state]:threads_)if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(tid))){r.tid=tid;r.trap_reason=breakpoint_sites_.get_by_address(get_pc(tid)).is_hardware()?trap_type::hardware_break:trap_type::software_break;break;}
+        }
         current_thread_=r.tid;threads_.at(r.tid).reason=r;
+
+        for(auto& [t,s]:threads_)s.state=state_;
+
         if(r.info!=SIGTRAP&&r.info!=SIGSTOP)pending_signal_=r.info;
+
+        if(r.trap_reason==trap_type::software_break){auto& bp=breakpoint_sites_.get_by_address(get_pc());if(bp.parent_&&bp.parent_->notify_hit()){resume();continue;}}
+
         if(target_&&!tracing_syscalls_)target_->notify_stop(r);
 
         return r;
+    }
 }
+void sdb::process::report_thread_lifecycle_event(const stop_reason& r){if(thread_lifecycle_callback_)thread_lifecycle_callback_(r);if(target_)target_->notify_thread_lifecycle_event(r);}
 std::filesystem::path sdb::process::executable_path() const {char path[PROC_PIDPATHINFO_MAXSIZE];if(proc_pidpath(pid_,path,sizeof(path))<=0)error::send_errno("proc_pidpath");return path;}
+std::uint64_t sdb::process::image_load_address() const {
     mach_vm_address_t addr=0; mach_vm_size_t size=0;
+
+    for(;;){vm_region_basic_info_data_64_t info{};mach_msg_type_number_t n=VM_REGION_BASIC_INFO_COUNT_64;mach_port_t object;
         auto k=mach_vm_region(task_,&addr,&size,VM_REGION_BASIC_INFO_64,reinterpret_cast<vm_region_info_t>(&info),&n,&object);if(k!=KERN_SUCCESS)break;
+
+        if(object)mach_port_deallocate(mach_task_self(),object);

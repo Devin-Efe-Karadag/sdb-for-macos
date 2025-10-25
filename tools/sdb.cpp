@@ -451,3 +451,33 @@ namespace {
 	void handle_register_write(
 		sdb::process& process,
 		const std::vector<std::string>& args) {
+		if (args.size() != 4) {
+			print_help({ "help", "register" });
+			return;
+		}
+		try {
+			auto info = sdb::register_info_by_name(args[2]);
+			auto value = parse_register_value(info, args[3]);
+			process.get_registers().write(info, value);
+		}
+		catch (sdb::error& err) {
+			std::cerr << err.what() << '\n';
+			return;
+		}
+	}
+
+	void handle_register_command(
+		sdb::target& target,
+		const std::vector<std::string>& args) {
+		if (args.size() < 2) {
+			print_help({ "help", "register" });
+			return;
+		}
+
+		if (is_prefix(args[1], "read")) {
+			handle_register_read(target, args);
+		}
+		else if (is_prefix(args[1], "write")) {
+			handle_register_write(target.get_process(), args);
+		}
+		else {

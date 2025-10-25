@@ -199,3 +199,13 @@ namespace sdb {
 		std::unordered_map<int, std::uint64_t> get_auxv() const;
 
 		void set_target(target* tgt) { target_ = tgt; }
+
+		breakpoint_site& create_breakpoint_site(
+			breakpoint* parent, breakpoint_site::id_type id, virt_addr address,
+			bool hardware = false, bool internal = false);
+
+		void set_current_thread(pid_t tid) { current_thread_ = tid; }
+		pid_t current_thread() const { return current_thread_; }
+
+		std::unordered_map<pid_t, thread_state>&
+			thread_states() { return threads_; }
