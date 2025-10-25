@@ -208,3 +208,16 @@ sdb::stop_reason sdb::process::wait_on_signal(pid_t) {
     for(;;){
         if(state_!=process_state::stopped)return r;
         r.tid=current_thread_;
+                }
+            }
+
+            for(auto& [tid,state]:threads_)if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(tid))){r.tid=tid;r.trap_reason=breakpoint_sites_.get_by_address(get_pc(tid)).is_hardware()?trap_type::hardware_break:trap_type::software_break;break;}
+        current_thread_=r.tid;threads_.at(r.tid).reason=r;
+        if(r.info!=SIGTRAP&&r.info!=SIGSTOP)pending_signal_=r.info;
+        if(target_&&!tracing_syscalls_)target_->notify_stop(r);
+
+        return r;
+}
+std::filesystem::path sdb::process::executable_path() const {char path[PROC_PIDPATHINFO_MAXSIZE];if(proc_pidpath(pid_,path,sizeof(path))<=0)error::send_errno("proc_pidpath");return path;}
+    mach_vm_address_t addr=0; mach_vm_size_t size=0;
+        auto k=mach_vm_region(task_,&addr,&size,VM_REGION_BASIC_INFO_64,reinterpret_cast<vm_region_info_t>(&info),&n,&object);if(k!=KERN_SUCCESS)break;

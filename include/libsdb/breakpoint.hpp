@@ -29,3 +29,18 @@ namespace sdb {
 
 		bool is_enabled() const { return is_enabled_; }
 		bool is_hardware() const { return is_hardware_; }
+		bool is_internal() const { return is_internal_; }
+
+		virtual void resolve() = 0;
+
+		stoppoint_collection<breakpoint_site, false>&
+			breakpoint_sites() { return breakpoint_sites_; }
+		const stoppoint_collection<breakpoint_site, false>&
+			breakpoint_sites() const { return breakpoint_sites_; }
+
+		bool at_address(virt_addr addr) const {
+			return breakpoint_sites_.contains_address(addr);
+		}
+		bool in_range(virt_addr low, virt_addr high) const {
+			return !breakpoint_sites_.get_in_region(low, high).empty();
+		}

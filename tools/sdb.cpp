@@ -421,3 +421,33 @@ namespace {
 				sdb::register_format::uint) {
 				switch (info.size) {
 				case 1: return sdb::to_integral<std::uint8_t>(text, 16).value();
+				case 2: return sdb::to_integral<std::uint16_t>(text, 16).value();
+				case 4: return sdb::to_integral<std::uint32_t>(text, 16).value();
+				case 8: return sdb::to_integral<std::uint64_t>(text, 16).value();
+				}
+			}
+			else if (info.format ==
+				sdb::register_format::double_float) {
+				return sdb::to_float<double>(text).value();
+			}
+			else if (info.format ==
+				sdb::register_format::long_double) {
+				return sdb::to_float<long double>(text).value();
+			}
+			else if (info.format ==
+				sdb::register_format::vector) {
+				if (info.size == 8) {
+					return sdb::parse_vector<8>(text);
+				}
+				else if (info.size == 16) {
+					return sdb::parse_vector<16>(text);
+				}
+			}
+		}
+		catch (...) {}
+		sdb::error::send("Invalid format");
+	}
+
+	void handle_register_write(
+		sdb::process& process,
+		const std::vector<std::string>& args) {

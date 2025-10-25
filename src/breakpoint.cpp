@@ -27,3 +27,18 @@ void sdb::breakpoint::disable() {
 }
 
 void sdb::address_breakpoint::resolve() {
+    if (breakpoint_sites_.empty()) {
+        auto& new_site = target_->get_process()
+            .create_breakpoint_site(
+                this, next_site_id_++, address_, is_hardware_, is_internal_);
+        breakpoint_sites_.push(&new_site);
+
+        if (is_enabled_) new_site.enable();
+    }
+}
+
+void sdb::function_breakpoint::resolve() {
+    auto found_functions = target_->find_functions(function_name_);
+
+    for (auto die : found_functions.dwarf_functions) {
+        if (die.contains(DW_AT_low_pc) or die.contains(DW_AT_ranges)) {

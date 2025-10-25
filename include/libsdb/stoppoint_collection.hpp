@@ -36,3 +36,23 @@ namespace sdb {
 
         void remove_by_id(typename Stoppoint::id_type id);
         void remove_by_address(virt_addr address);
+
+        template <class F>
+        void for_each(F f);
+        template <class F>
+        void for_each(F f) const;
+
+        std::size_t size() const { return stoppoints_.size(); }
+
+        bool empty() const { return stoppoints_.empty(); }
+
+    private:
+        using points_t = std::vector<pointer_type>;
+
+        typename points_t::iterator find_by_id(typename Stoppoint::id_type id);
+        typename points_t::const_iterator find_by_id(typename Stoppoint::id_type id) const;
+        typename points_t::iterator find_by_address(virt_addr address);
+        typename points_t::const_iterator find_by_address(virt_addr address) const;
+
+        points_t stoppoints_;
+    };

@@ -188,3 +188,14 @@ namespace sdb {
 		}
 		const stoppoint_collection<watchpoint>& watchpoints() const {
 			return watchpoints_;
+		}
+		std::variant<breakpoint_site::id_type, watchpoint::id_type>
+			get_current_hardware_stoppoint(std::optional<pid_t> otid = std::nullopt) const;
+
+		void set_syscall_catch_policy(syscall_catch_policy info) {
+			syscall_catch_policy_ = std::move(info);
+		}
+
+		std::unordered_map<int, std::uint64_t> get_auxv() const;
+
+		void set_target(target* tgt) { target_ = tgt; }

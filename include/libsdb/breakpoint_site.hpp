@@ -27,3 +27,17 @@ namespace sdb {
 		bool at_address(virt_addr addr) const {
 			return address_ == addr;
 		}
+		bool in_range(virt_addr low, virt_addr high) const {
+			return low <= address_ and high > address_;
+		}
+
+		bool is_hardware() const { return is_hardware_; }
+		bool is_internal() const { return is_internal_; }
+
+	private:
+		breakpoint_site(
+			process& proc, virt_addr address,
+			bool is_hardware = false, bool is_internal = false);
+		breakpoint_site(
+			breakpoint* parent, id_type id, process& proc, virt_addr address, bool is_hardware = false, bool is_internal = false);
+		friend process;
