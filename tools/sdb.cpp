@@ -481,3 +481,33 @@ namespace {
 			handle_register_write(target.get_process(), args);
 		}
 		else {
+			print_help({ "help", "register" });
+		}
+	}
+
+	void handle_breakpoint_list_command(sdb::target& target) {
+		if (target.breakpoints().empty()) {
+			fmt::print("No breakpoints set\n");
+		}
+		else {
+			fmt::print("Current breakpoints:\n");
+			target.breakpoints().for_each([](auto& bp) {
+				if (bp.is_internal()) return;
+				fmt::print("{}: ", bp.id());
+				if (auto func_bp = dynamic_cast<sdb::function_breakpoint*>(&bp)) {
+					fmt::print("function = {}", func_bp->function_name());
+				}
+				else if (auto line_bp = dynamic_cast<sdb::line_breakpoint*>(&bp)) {
+					fmt::print("file = {}, line = {}",
+						line_bp->file().string(), line_bp->line());
+				}
+				else if (auto addr_bp = dynamic_cast<sdb::address_breakpoint*>(&bp)) {
+					fmt::print("address = {:#x}", addr_bp->address().addr());
+				}
+				fmt::print(", {}:\n", bp.is_enabled() ? "enabled" : "disabled");
+				bp.breakpoint_sites().for_each([&](auto& site) {
+					fmt::print("    .{}: address = {:#x}, {}\n",
+						site.id(), site.address().addr(),
+						site.is_enabled() ? "enabled" : "disabled");
+					});
+				});

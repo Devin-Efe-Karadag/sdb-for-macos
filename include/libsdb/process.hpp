@@ -209,3 +209,15 @@ namespace sdb {
 
 		std::unordered_map<pid_t, thread_state>&
 			thread_states() { return threads_; }
+
+		const std::unordered_map<pid_t, thread_state>&
+			thread_states() const { return threads_; }
+
+		void stop_running_threads();
+		void resume_all_threads();
+
+		std::optional<sdb::stop_reason> cleanup_exited_threads(pid_t main_stop_tid);
+		void report_thread_lifecycle_event(const stop_reason& reason);
+
+		std::optional<stop_reason> handle_signal(
+			stop_reason reason, bool is_main_stop);

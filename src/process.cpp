@@ -198,16 +198,40 @@ void sdb::process::resume_all_threads(){resume();}
 void sdb::process::step_over_breakpoint(pid_t t){if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(t)))step_instruction(t);}
 sdb::stop_reason sdb::process::step_instruction(std::optional<pid_t> tid) {
     auto t=tid.value_or(current_thread_);current_thread_=t;
+    breakpoint_site* bp=nullptr;
+
     if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(t))){bp=&breakpoint_sites_.get_by_address(get_pc(t));bp->disable();}
+
+    std::vector<mach_port_t> suspended;
+
     for(auto [other,port]:ports_)if(other!=t){check(thread_suspend(port),"suspend other thread for step");suspended.push_back(port);}
+
+    auto debug=debug_state_;debug.__mdscr_el1|=1;
     check(thread_set_state(ports_.at(t),ARM_DEBUG_STATE64,reinterpret_cast<thread_state_t>(&debug),ARM_DEBUG_STATE64_COUNT),"enable selected-thread step");
+    stepping_=true;
     trace(t==main_thread_?PT_STEP:PT_CONTINUE,pid_);state_=process_state::running;
+
+    auto reason=wait_on_signal(t);stepping_=false;
+
+    if(state_==process_state::stopped&&ports_.count(t))check(thread_set_state(ports_.at(t),ARM_DEBUG_STATE64,reinterpret_cast<thread_state_t>(&debug_state_),ARM_DEBUG_STATE64_COUNT),"disable selected-thread step");
+
     for(auto port:suspended)thread_resume(port);
+
+    if(bp && state_==process_state::stopped)bp->enable();
+
     return reason;
+}
 sdb::stop_reason sdb::process::wait_on_signal(pid_t) {
+    if(queued_stop_)return std::exchange(queued_stop_,std::nullopt).value();
+
     for(;;){
+        stop_reason r(current_thread_,wait_child(pid_)); state_=r.reason;
+
         if(state_!=process_state::stopped)return r;
+        populate_existing_threads();
         r.tid=current_thread_;
+
+        if(r.info==SIGTRAP){
                 }
             }
 

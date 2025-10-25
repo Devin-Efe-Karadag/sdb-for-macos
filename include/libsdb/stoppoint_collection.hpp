@@ -76,3 +76,22 @@ namespace sdb {
     template <class Stoppoint, bool Owning>
 
     auto stoppoint_collection<Stoppoint,Owning>::find_by_id(typename Stoppoint::id_type id) const
+        -> typename points_t::const_iterator {
+        return const_cast<stoppoint_collection*>(this)->find_by_id(id);
+    }
+
+    template <class Stoppoint, bool Owning>
+
+    auto stoppoint_collection<Stoppoint,Owning>::find_by_address(virt_addr address)
+        -> typename points_t::iterator
+    {
+        return std::find_if(begin(stoppoints_), end(stoppoints_),
+            [=](auto& point) { return point->at_address(address); });
+    }
+
+    template <class Stoppoint, bool Owning>
+
+    auto stoppoint_collection<Stoppoint,Owning>::find_by_address(virt_addr address) const
+        -> typename points_t::const_iterator {
+        return const_cast<stoppoint_collection*>(this)->find_by_address(address);
+    }
