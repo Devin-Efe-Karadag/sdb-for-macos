@@ -390,3 +390,34 @@ namespace {
 				fmt::print("{}:\t{}\n", info.name, std::visit(format, value));
 			}
 			};
+
+		if (args.size() == 2 or
+			(args.size() == 3 and args[2] == "all")) {
+			for (auto& info : sdb::g_register_infos) {
+				if (args.size() == 3 or info.type == sdb::register_type::gpr) {
+					print_register_value(info);
+				}
+			}
+		}
+		else if (args.size() == 3) {
+			try {
+				auto info = sdb::register_info_by_name(args[2]);
+				print_register_value(info);
+			}
+			catch (sdb::error& err) {
+				std::cerr << "No such register\n";
+				return;
+			}
+		}
+		else {
+			print_help({ "help", "register" });
+		}
+	}
+
+	sdb::registers::value parse_register_value(
+		sdb::register_info info, std::string_view text) {
+		try {
+			if (info.format ==
+				sdb::register_format::uint) {
+				switch (info.size) {
+				case 1: return sdb::to_integral<std::uint8_t>(text, 16).value();

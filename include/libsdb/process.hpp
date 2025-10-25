@@ -176,3 +176,15 @@ namespace sdb {
 		int set_hardware_breakpoint(
 			breakpoint_site::id_type id, virt_addr address);
 		void clear_hardware_stoppoint(int index);
+
+		int set_watchpoint(
+			watchpoint::id_type id, virt_addr address,
+			stoppoint_mode mode, std::size_t size);
+
+		watchpoint& create_watchpoint(
+			virt_addr address, stoppoint_mode mode, std::size_t size);
+		stoppoint_collection<watchpoint>& watchpoints() {
+			return watchpoints_;
+		}
+		const stoppoint_collection<watchpoint>& watchpoints() const {
+			return watchpoints_;

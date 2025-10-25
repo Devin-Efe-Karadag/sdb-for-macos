@@ -181,7 +181,18 @@ void sdb::process::write_memory(virt_addr addr,span<const std::byte> data) {
     while(offset<data.size()) {
         mach_vm_address_t region=addr.addr()+offset; mach_vm_size_t region_size=0;
         check(mach_vm_region_recurse(task_,&region,&region_size,&depth,reinterpret_cast<vm_region_recurse_info_t>(&info),&n),"find memory region");
+                if(match&&!expecting_syscall_exit_){
+                    syscall_information info{};info.id=id;info.entry=true;
+
+                    for(int i=0;i<6;++i)info.args[i]=std::get<std::uint64_t>(get_registers(t).read(register_info_by_name("x"+std::to_string(i))));
                     expecting_syscall_exit_=true;queued_stop_=stop_reason(t,process_state::stopped,SIGTRAP,trap_type::syscall,info);break;
+                }
+                if(!reason.is_step()){queued_stop_=reason;break;}
+            tracing_syscalls_=false;
+        if(target_&&queued_stop_->reason==process_state::stopped)target_->notify_stop(*queued_stop_);
+        return;
+    }
+    step_over_breakpoint(t);send_continue(t);
 }
 void sdb::process::resume_all_threads(){resume();}
 void sdb::process::step_over_breakpoint(pid_t t){if(breakpoint_sites_.enabled_stoppoint_at_address(get_pc(t)))step_instruction(t);}
