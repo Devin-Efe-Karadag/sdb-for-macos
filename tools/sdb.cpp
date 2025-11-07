@@ -511,3 +511,33 @@ namespace {
 						site.is_enabled() ? "enabled" : "disabled");
 					});
 				});
+		}
+	}
+
+	void handle_breakpoint_set_command(
+		sdb::target& target, const std::vector<std::string>& args) {
+		bool hardware = false;
+		if (args.size() == 4) {
+			if (args[3] == "-h") hardware = true;
+			else sdb::error::send("Invalid breakpoint command argument");
+		}
+
+		if (args[2].find("0x") == 0) {
+			auto address = sdb::to_integral<std::uint64_t>(args[2], 16);
+
+			if (!address) {
+				fmt::print(stderr,
+					"Breakpoint command expects address in "
+					"hexadecimal, prefixed with '0x'\n");
+				return;
+			}
+
+			target.create_address_breakpoint(
+				sdb::virt_addr{ *address }, hardware).enable();
+		}
+		else if (args[2].find(':') != std::string::npos) {
+			auto data = split(args[2], ':');
+			auto path = data[0];
+			auto line = sdb::to_integral<std::uint64_t>(data[1]);
+			if (!line) {
+				fmt::print(stderr,

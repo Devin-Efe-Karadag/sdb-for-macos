@@ -187,8 +187,19 @@ void sdb::process::write_memory(virt_addr addr,span<const std::byte> data) {
                     for(int i=0;i<6;++i)info.args[i]=std::get<std::uint64_t>(get_registers(t).read(register_info_by_name("x"+std::to_string(i))));
                     expecting_syscall_exit_=true;queued_stop_=stop_reason(t,process_state::stopped,SIGTRAP,trap_type::syscall,info);break;
                 }
+
+                auto reason=step_instruction(t);
+
+                if(expecting_syscall_exit_&&reason.is_step()){
+                    syscall_information info{};info.id=id;info.entry=false;info.ret=get_registers(t).read_by_id_as<std::uint64_t>(register_id::x0);
+                    expecting_syscall_exit_=false;queued_stop_=stop_reason(t,process_state::stopped,SIGTRAP,trap_type::syscall,info);break;
+                }
+
                 if(!reason.is_step()){queued_stop_=reason;break;}
+            }
             tracing_syscalls_=false;
+        }catch(...){tracing_syscalls_=false;throw;}
+
         if(target_&&queued_stop_->reason==process_state::stopped)target_->notify_stop(*queued_stop_);
         return;
     }
