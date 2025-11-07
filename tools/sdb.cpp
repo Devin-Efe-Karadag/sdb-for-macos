@@ -541,3 +541,34 @@ namespace {
 			auto line = sdb::to_integral<std::uint64_t>(data[1]);
 			if (!line) {
 				fmt::print(stderr,
+					"Line number should be an integer\n");
+				return;
+			}
+			target.create_line_breakpoint(path, *line, hardware).enable();
+		}
+		else {
+			target.create_function_breakpoint(args[2]).enable();
+		}
+	}
+
+	void handle_breakpoint_toggle(
+		sdb::target& target,
+		const std::vector<std::string>& args) {
+		auto command = args[1];
+
+		auto dot_pos = args[2].find('.');
+		auto id_str = args[2].substr(0, dot_pos);
+		auto id = sdb::to_integral<sdb::breakpoint::id_type>(id_str);
+		if (!id) {
+			std::cerr << "Command expects breakpoint id";
+			return;
+		}
+		auto& bp = target.breakpoints().get_by_id(*id);
+
+		if (dot_pos != std::string::npos) {
+			auto site_id_str = args[2].substr(dot_pos + 1);
+			auto site_id = sdb::to_integral<sdb::breakpoint_site::id_type>(site_id_str);
+			if (!site_id) {
+				std::cerr << "Command expects breakpoint site id";
+				return;
+			}

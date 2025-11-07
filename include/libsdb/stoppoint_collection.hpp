@@ -95,3 +95,23 @@ namespace sdb {
         -> typename points_t::const_iterator {
         return const_cast<stoppoint_collection*>(this)->find_by_address(address);
     }
+
+    template <class Stoppoint, bool Owning>
+
+    bool stoppoint_collection<Stoppoint,Owning>::contains_id(typename Stoppoint::id_type id) const {
+        return find_by_id(id) != end(stoppoints_);
+    }
+
+    template <class Stoppoint, bool Owning>
+
+    bool stoppoint_collection<Stoppoint,Owning>::contains_address(virt_addr address) const {
+        return find_by_address(address) != end(stoppoints_);
+    }
+
+    template <class Stoppoint, bool Owning>
+
+    bool stoppoint_collection<Stoppoint,Owning>::enabled_stoppoint_at_address(virt_addr address) const {
+        return contains_address(address) and get_by_address(address).is_enabled();
+    }
+
+    template <class Stoppoint, bool Owning>

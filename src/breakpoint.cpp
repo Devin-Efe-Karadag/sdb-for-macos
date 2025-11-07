@@ -42,3 +42,16 @@ void sdb::function_breakpoint::resolve() {
 
     for (auto die : found_functions.dwarf_functions) {
         if (die.contains(DW_AT_low_pc) or die.contains(DW_AT_ranges)) {
+            file_addr addr;
+
+            if (die.abbrev_entry()->tag == DW_TAG_inlined_subroutine) {
+                addr = die.low_pc();
+            }
+            else {
+                auto function_line = die.cu()->lines()
+                    .get_entry_by_address(die.low_pc());
+                ++function_line;
+                addr = function_line->address;
+            }
+
+            auto load_address = addr.to_virt_addr();

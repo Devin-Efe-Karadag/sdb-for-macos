@@ -44,3 +44,17 @@ namespace sdb {
 		bool in_range(virt_addr low, virt_addr high) const {
 			return !breakpoint_sites_.get_in_region(low, high).empty();
 		}
+
+		void install_hit_handler(std::function<bool(void)> on_hit) {
+			on_hit_ = std::move(on_hit);
+		}
+
+		bool notify_hit() const {
+			if (on_hit_) return on_hit_();
+			return false;
+		}
+
+	protected:
+		friend target;
+		breakpoint(
+			target& tgt, bool is_hardware = false, bool is_internal = false);
