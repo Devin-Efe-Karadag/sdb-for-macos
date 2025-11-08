@@ -572,3 +572,32 @@ namespace {
 				std::cerr << "Command expects breakpoint site id";
 				return;
 			}
+			if (is_prefix(command, "enable")) {
+				bp.breakpoint_sites().get_by_id(*site_id).enable();
+			}
+			else if (is_prefix(command, "disable")) {
+				bp.breakpoint_sites().get_by_id(*site_id).disable();
+			}
+		}
+		else if (is_prefix(command, "enable")) {
+			bp.enable();
+		}
+		else if (is_prefix(command, "disable")) {
+			bp.disable();
+		}
+		else if (is_prefix(command, "delete")) {
+			bp.breakpoint_sites().for_each([&](auto& site) {
+				target.get_process().breakpoint_sites().remove_by_address(site.address());
+				});
+			target.breakpoints().remove_by_id(*id);
+		}
+	}
+
+	void handle_breakpoint_command(sdb::target& target,
+		const std::vector<std::string>& args) {
+		if (args.size() < 2) {
+			print_help({ "help", "breakpoint" });
+			return;
+		}
+
+		auto command = args[1];
