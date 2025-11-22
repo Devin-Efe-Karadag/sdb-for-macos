@@ -243,6 +243,20 @@ sdb::stop_reason sdb::process::wait_on_signal(pid_t) {
         r.tid=current_thread_;
 
         if(r.info==SIGTRAP){
+            r.trap_reason=stepping_?trap_type::single_step:trap_type::unknown;
+            hit_slot_=-1;
+
+            for(auto& [tid,state]:threads_){
+                arm_exception_state64_t exception{};mach_msg_type_number_t n=ARM_EXCEPTION_STATE64_COUNT;
+
+                if(thread_get_state(ports_.at(tid),ARM_EXCEPTION_STATE64,reinterpret_cast<thread_state_t>(&exception),&n)==KERN_SUCCESS){
+                    auto ec=exception.__esr>>26;
+
+                    if(ec==0x34||ec==0x35){
+                        watchpoints_.for_each([&](auto& w){if(w.is_enabled()&&exception.__far>=w.address().addr()&&exception.__far<w.address().addr()+w.size()){hit_slot_=w.hardware_register_index_;w.update_data();}});
+
+                        if(hit_slot_>=0){r.tid=tid;r.trap_reason=trap_type::hardware_break;}
+                    }
                 }
             }
 
