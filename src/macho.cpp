@@ -1,3 +1,38 @@
+#include <libsdb/elf.hpp>
+#include <libsdb/dwarf.hpp>
+#include <libsdb/error.hpp>
+#include <mach-o/loader.h>
+#include <mach-o/nlist.h>
+#include <mach-o/fat.h>
+#include <libkern/OSByteOrder.h>
+#include <fstream>
+#include <cxxabi.h>
+#include <cstring>
+#include <limits>
+namespace {
+std::vector<std::byte> read_file(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary|std::ios::ate);
+
+    if(!in) sdb::error::send("Cannot open Mach-O file: "+path.string());
+
+    auto n=in.tellg();if(n<0 || n>1024LL*1024*1024)sdb::error::send("Invalid Mach-O file size");
+
+    std::vector<std::byte> b(static_cast<std::size_t>(n));in.seekg(0);
+
+    if(!in.read(reinterpret_cast<char*>(b.data()),n))sdb::error::send("Cannot read Mach-O file");return b;
+}
+template<class T>T record(const std::vector<std::byte>& b,std::size_t off){
+    if(off>b.size()||sizeof(T)>b.size()-off)sdb::error::send("Truncated Mach-O record");
+    T t;memcpy(&t,b.data()+off,sizeof t);return t;
+}
+void bounds(const std::vector<std::byte>& b,std::uint64_t off,std::uint64_t size){if(off>b.size()||size>b.size()-off)sdb::error::send("Mach-O range outside file");}
+}
+sdb::elf::elf(const std::filesystem::path& path):path_(path){
+    parse_macho(path,false);
+
+    auto dsym=std::filesystem::path(path.string()+".dSYM")/"Contents/Resources/DWARF"/path.filename();
+
+    if(std::filesystem::exists(dsym))parse_macho(dsym,true);
     data_=storage_.data();file_size_=storage_.size();build_section_map();build_symbol_maps();
     dwarf_=std::make_unique<dwarf>(*this);
 }
