@@ -925,3 +925,409 @@ sdb::file_addr sdb::die::high_pc() const {
         file_addr addr;
 
         if (attr.form() == DW_FORM_addr) {
+            return attr.as_address();
+        }
+        else {
+            return low_pc() + attr.as_int();
+        }
+    }
+    error::send("DIE does not have high PC");
+}
+
+const sdb::compile_unit*
+sdb::dwarf::compile_unit_containing_address(file_addr address) const {
+    for (auto& cu : compile_units_) {
+        if (cu->root().contains_address(address)) {
+            return cu.get();
+        }
+    }
+
+    return nullptr;
+}
+
+std::optional<sdb::die>
+sdb::dwarf::function_containing_address(file_addr address) const {
+    index();
+
+    for (auto& [name, entry] : function_index_) {
+        cursor cur({ entry.pos, entry.cu->data().end() });
+
+        auto d = parse_die(*entry.cu, cur);
+
+        if (d.contains_address(address) and
+            d.abbrev_entry()->tag == DW_TAG_subprogram) {
+            return d;
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::vector<sdb::die> sdb::dwarf::find_functions(std::string name) const {
+    index();
+
+    std::vector<die> found;
+
+    auto [begin, end] = function_index_.equal_range(name);
+
+    std::transform(begin, end, std::back_inserter(found), [](auto& pair) {
+        auto [name, entry] = pair;
+        cursor cur({ entry.pos, entry.cu->data().end() });
+
+        return parse_die(*entry.cu, cur);
+        });
+    return found;
+}
+
+void sdb::dwarf::index() const {
+    if (!function_index_.empty()) return;
+
+    for (auto& cu : compile_units_) {
+        index_die(cu->root());
+    }
+}
+            auto compilation_dir =
+                table_->cu_->root()[DW_AT_comp_dir].as_string();
+            auto file = parse_line_table_file(
+                cur, std::string(compilation_dir), table_->include_directories_);
+            table_->file_names_.push_back(file);
+            break;
+        }
+        case DW_LNE_set_discriminator:
+            registers_.discriminator = cur.uleb128();
+            break;
+        default:
+            error::send("Unexpected extended opcode");
+        }
+    }
+    else {
+        auto adjusted_opcode = opcode - table_->opcode_base_;
+        registers_.address += adjusted_opcode / table_->line_range_;
+        registers_.line +=
+            table_->line_base_ + (adjusted_opcode % table_->line_range_);
+        current_ = registers_;
+        registers_.basic_block_start = false;
+        registers_.prologue_end = false;
+        registers_.epilogue_begin = false;
+        registers_.discriminator = 0;
+        emitted = true;
+    }
+
+    pos_ = cur.position();
+
+    return emitted;
+}
+
+sdb::line_table::iterator
+sdb::line_table::get_entry_by_address(file_addr address) const {
+    auto prev = begin();
+
+    if (prev == end()) return prev;
+
+    auto it = prev;
+
+    for (++it; it != end(); prev = it++) {
+        if (prev->address <= address and
+            it->address > address and
+            !prev->end_sequence) {
+            return prev;
+        }
+    }
+
+    return end();
+}
+
+namespace {
+    bool path_ends_in(const std::filesystem::path& lhs, const std::filesystem::path& rhs) {
+        auto lhs_size = std::distance(lhs.begin(), lhs.end());
+
+        auto rhs_size = std::distance(rhs.begin(), rhs.end());
+
+        if (rhs_size > lhs_size) return false;
+
+        auto start = std::next(lhs.begin(), lhs_size - rhs_size);
+
+        return std::equal(start, lhs.end(), rhs.begin());
+    }
+}
+
+std::vector<sdb::line_table::iterator>
+sdb::line_table::get_entries_by_line(
+    std::filesystem::path path, std::size_t line) const {
+    std::vector<iterator> entries;
+
+    for (auto it = begin(); it != end(); ++it) {
+        auto& entry_path = it->file_entry->path;
+
+        if (it->line == line) {
+            if ((path.is_absolute() and entry_path == path) or
+                (path.is_relative() and path_ends_in(entry_path, path))) {
+                entries.push_back(it);
+            }
+        }
+    }
+
+    return entries;
+}
+
+sdb::source_location
+sdb::die::location() const {
+    return { &file(), line() };
+}
+
+const sdb::line_table::file&
+sdb::die::file() const {
+    std::uint64_t idx;
+
+    if (abbrev_->tag == DW_TAG_inlined_subroutine) {
+        idx = (*this)[DW_AT_call_file].as_int();
+    }
+    else {
+        idx = (*this)[DW_AT_decl_file].as_int();
+    }
+
+    return this->cu_->lines().file_names()[idx - 1];
+}
+
+std::uint64_t sdb::die::line() const {
+    if (abbrev_->tag == DW_TAG_inlined_subroutine) {
+        return (*this)[DW_AT_call_line].as_int();
+    }
+
+    return (*this)[DW_AT_decl_line].as_int();
+}
+
+std::vector<sdb::die> sdb::dwarf::inline_stack_at_address(file_addr address) const {
+    auto func = function_containing_address(address);
+
+    std::vector<sdb::die> stack;
+
+    if (func) {
+        stack.push_back(*func);
+
+        while (true) {
+            const auto& children = stack.back().children();
+
+            auto found = std::find_if(children.begin(), children.end(),
+                [=](auto& child) {
+                    return child.abbrev_entry()->tag == DW_TAG_inlined_subroutine and
+                        child.contains_address(address);
+                });
+            if (found == children.end()) {
+                break;
+            }
+            else {
+                stack.push_back(*found);
+            }
+        }
+    }
+
+    return stack;
+}
+
+const sdb::call_frame_information::common_information_entry&
+sdb::call_frame_information::get_cie(file_offset at) const {
+    auto offset = at.off();
+
+    if (cie_map_.count(offset)) {
+        return cie_map_.at(offset);
+    }
+
+    auto section = at.elf_file()->get_section_contents(".eh_frame");
+    cursor cur({ at.elf_file()->file_offset_as_data_pointer(at), section.end() });
+
+    auto cie = parse_cie(cur);
+    cie_map_.emplace(offset, cie);
+
+    return cie_map_.at(offset);
+}
+
+namespace {
+    struct undefined_rule {};
+
+    struct same_rule {};
+
+    struct offset_rule {
+        std::int64_t offset;
+    };
+
+    struct val_offset_rule {
+        std::int64_t offset;
+    };
+
+    struct register_rule {
+        std::uint32_t reg;
+    };
+
+    struct expr_rule {
+        sdb::dwarf_expression expr;
+    };
+
+    struct val_expr_rule {
+        sdb::dwarf_expression expr;
+    };
+
+    struct cfa_register_rule {
+        std::uint32_t reg;
+
+        std::int64_t offset;
+    };
+
+    struct cfa_expr_rule {
+        sdb::dwarf_expression expr;
+    };
+
+    struct unwind_context {
+        cursor cur{ {nullptr, nullptr} };
+        sdb::file_addr location;
+        using cfa_rule_type = std::variant<cfa_register_rule, cfa_expr_rule>;
+        cfa_rule_type cfa_rule;
+        using rule = std::variant<
+            undefined_rule, same_rule, offset_rule,
+            val_offset_rule, register_rule,
+            expr_rule, val_expr_rule>;
+        using ruleset = std::unordered_map<std::uint32_t, rule>;
+        ruleset cie_register_rules;
+        ruleset register_rules;
+
+        std::vector<std::pair<ruleset, cfa_rule_type>> rule_stack;
+    };
+
+    void execute_cfi_instruction(
+        const sdb::elf& elf,
+
+        const sdb::call_frame_information::frame_description_entry& fde,
+        unwind_context& ctx, sdb::file_addr pc) {
+        auto& cie = *fde.cie;
+        auto& cur = ctx.cur;
+
+        auto text_section_start = *elf.get_section_start_address(".text");
+
+        auto plt_start = elf.get_section_start_address(".got.plt")
+            .value_or(sdb::file_addr{});
+
+        auto opcode = cur.u8();
+
+        auto primary_opcode = opcode & 0xc0;
+
+        auto extended_opcode = opcode & 0x3f;
+
+        if (primary_opcode) {
+            switch (primary_opcode) {
+            case DW_CFA_advance_loc:
+                ctx.location += extended_opcode * cie.code_alignment_factor;
+                break;
+            case DW_CFA_offset: {
+                auto offset =
+                    static_cast<std::int64_t>(cur.uleb128()) * cie.data_alignment_factor;
+                ctx.register_rules.emplace(extended_opcode, offset_rule{ offset });
+                break;
+            }
+            case DW_CFA_restore:
+                ctx.register_rules.emplace(
+                    extended_opcode, ctx.cie_register_rules.at(extended_opcode));
+                break;
+            }
+        }
+        else if (extended_opcode) {
+            switch (extended_opcode) {
+            case DW_CFA_set_loc: {
+                auto current_offset = elf.data_pointer_as_file_offset(cur.position());
+
+                auto loc = parse_eh_frame_pointer(
+                    elf, cur, cie.fde_pointer_encoding,
+                    current_offset.off(), text_section_start.addr(),
+                    plt_start.addr(), fde.initial_location.addr());
+                ctx.location = sdb::file_addr{ elf, loc };
+                break;
+            }
+            case DW_CFA_advance_loc1:
+                ctx.location += cur.u8() * cie.code_alignment_factor;
+                break;
+            case DW_CFA_advance_loc2:
+                ctx.location += cur.u16() * cie.code_alignment_factor;
+                break;
+            case DW_CFA_advance_loc4:
+                ctx.location += cur.u32() * cie.code_alignment_factor;
+                break;
+            case DW_CFA_def_cfa:
+                ctx.cfa_rule = cfa_register_rule{
+                  static_cast<std::uint32_t>(cur.uleb128()),
+                  static_cast<std::uint32_t>(cur.uleb128())
+                };
+                break;
+            case DW_CFA_def_cfa_sf:
+                ctx.cfa_rule = cfa_register_rule{
+                    static_cast<std::uint32_t>(cur.uleb128()),
+                    cur.sleb128() * cie.data_alignment_factor
+                };
+                break;
+            case DW_CFA_def_cfa_register:
+                std::get<cfa_register_rule>(ctx.cfa_rule).reg = cur.uleb128();
+                break;
+            case DW_CFA_def_cfa_offset:
+                std::get<cfa_register_rule>(ctx.cfa_rule).offset = cur.uleb128();
+                break;
+            case DW_CFA_def_cfa_offset_sf:
+                std::get<cfa_register_rule>(ctx.cfa_rule).offset =
+                    cur.sleb128() * cie.data_alignment_factor;
+                break;
+            case DW_CFA_def_cfa_expression: {
+                auto length = cur.uleb128();
+
+                auto expr = sdb::dwarf_expression{
+                    elf, { cur.position(), cur.position() + length }, true };
+                ctx.cfa_rule = cfa_expr_rule{ expr };
+                break;
+            }
+            case DW_CFA_expression: {
+                auto reg = cur.uleb128();
+
+                auto length = cur.uleb128();
+
+                auto expr = sdb::dwarf_expression{
+                    elf, { cur.position(), cur.position() + length }, true };
+                ctx.register_rules.emplace(reg, expr_rule{ expr });
+                break;
+            }
+            case DW_CFA_val_expression: {
+                auto reg = cur.uleb128();
+
+                auto length = cur.uleb128();
+
+                auto expr = sdb::dwarf_expression{
+                    elf, { cur.position(), cur.position() + length }, true };
+                ctx.register_rules.emplace(reg, val_expr_rule{ expr });
+                break;
+            }
+            case DW_CFA_undefined:
+                ctx.register_rules.emplace(cur.uleb128(), undefined_rule{});
+                break;
+            case DW_CFA_same_value:
+                ctx.register_rules.emplace(cur.uleb128(), same_rule{});
+                break;
+            case DW_CFA_offset_extended: {
+                auto reg = cur.uleb128();
+
+                auto offset = static_cast<std::int64_t>(
+                    cur.uleb128()) * cie.data_alignment_factor;
+                ctx.register_rules.emplace(reg, offset_rule{ offset });
+                break;
+            }
+            case DW_CFA_offset_extended_sf: {
+                auto reg = cur.uleb128();
+
+                auto offset = cur.sleb128() * cie.data_alignment_factor;
+                ctx.register_rules.emplace(reg, offset_rule{ offset });
+                break;
+            }
+            case DW_CFA_val_offset: {
+                auto reg = cur.uleb128();
+
+                auto offset = static_cast<std::int64_t>(
+                    cur.uleb128()) * cie.data_alignment_factor;
+                ctx.register_rules.emplace(reg, val_offset_rule{ offset });
+                break;
+            }
+            case DW_CFA_val_offset_sf: {
+                auto reg = cur.uleb128();

@@ -170,3 +170,89 @@ namespace sdb {
 
 	class elf;
 	struct attr_spec {
+		std::uint64_t attr;
+		std::uint64_t form;
+	};
+	struct abbrev {
+		std::uint64_t code;
+		std::uint64_t tag;
+		bool has_children;
+		std::vector<attr_spec> attr_specs;
+	};
+
+	class dwarf;
+
+	class line_table {
+	public:
+		struct file {
+			std::filesystem::path path;
+			std::uint64_t modification_time;
+			std::uint64_t file_length;
+		};
+
+		line_table(sdb::span<const std::byte> data,
+			const compile_unit* cu,
+			bool default_is_stmt, std::int8_t line_base,
+			std::uint8_t line_range, std::uint8_t opcode_base,
+			std::vector<std::filesystem::path> include_directories,
+			std::vector<file> file_names)
+			: data_(data), cu_(cu)
+			, default_is_stmt_(default_is_stmt)
+			, line_base_(line_base)
+			, line_range_(line_range)
+			, opcode_base_(opcode_base)
+			, include_directories_(std::move(include_directories))
+			, file_names_(std::move(file_names))
+		{}
+
+		const compile_unit& cu() const { return *cu_; }
+		const std::vector<file>& file_names() const { return file_names_; }
+
+		line_table(const line_table&) = delete;
+		line_table& operator=(const line_table&) = delete;
+
+		struct entry;
+
+		class iterator;
+
+		iterator begin() const;
+		iterator end() const;
+
+		iterator get_entry_by_address(file_addr address) const;
+		std::vector<iterator> get_entries_by_line(
+			std::filesystem::path path, std::size_t line) const;
+
+	private:
+		sdb::span<const std::byte> data_;
+		const compile_unit* cu_;
+		bool default_is_stmt_;
+		std::int8_t line_base_;
+		std::uint8_t line_range_;
+		std::uint8_t opcode_base_;
+		std::vector<std::filesystem::path> include_directories_;
+		mutable std::vector<file> file_names_;
+	};
+
+	struct line_table::entry {
+		bool operator==(const entry& rhs) const {
+			return address == rhs.address and
+				file_index == rhs.file_index and
+				line == rhs.line and
+				column == rhs.column and
+				discriminator == rhs.discriminator;
+		}
+
+		file_addr address;
+		std::uint64_t file_index = 1;
+		std::uint64_t line = 1;
+		std::uint64_t column = 0;
+		bool is_stmt;
+		bool basic_block_start = false;
+		bool end_sequence = false;
+		bool prologue_end = false;
+		bool epilogue_begin = false;
+		std::uint64_t discriminator = 0;
+		file* file_entry = nullptr;
+	};
+
+	class line_table::iterator {

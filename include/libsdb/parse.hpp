@@ -29,3 +29,19 @@ namespace sdb {
         if (result.ec != std::errc{} || result.ptr != sv.end()) {
             return std::nullopt;
         }
+
+        return ret;
+    }
+
+    template<>
+    inline std::optional<std::byte> to_integral(std::string_view sv, int base) {
+        auto uint8 = to_integral<std::uint8_t>(sv, base);
+
+        if (uint8) return static_cast<std::byte>(*uint8);
+
+        return std::nullopt;
+    }
+
+    inline std::vector<std::byte> parse_vector(std::string_view text) {
+        if(text.size()<2 || text.front()!='[' || text.back()!=']') error::send("Expected [0x00,0x01,...]");
+        text.remove_prefix(1);text.remove_suffix(1);std::vector<std::byte> result;
