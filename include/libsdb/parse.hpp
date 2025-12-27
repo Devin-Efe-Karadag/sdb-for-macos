@@ -45,3 +45,20 @@ namespace sdb {
     inline std::vector<std::byte> parse_vector(std::string_view text) {
         if(text.size()<2 || text.front()!='[' || text.back()!=']') error::send("Expected [0x00,0x01,...]");
         text.remove_prefix(1);text.remove_suffix(1);std::vector<std::byte> result;
+
+        while(!text.empty()){
+            auto comma=text.find(',');auto item=text.substr(0,comma);auto value=to_integral<std::byte>(item,16);
+
+            if(!value)error::send("Invalid byte value");result.push_back(*value);
+
+            if(comma==std::string_view::npos)break;
+            text.remove_prefix(comma+1);if(text.empty())error::send("Trailing comma in byte vector");
+        }return result;
+    }
+    template <std::size_t N> auto parse_vector(std::string_view text) {
+        auto parsed=parse_vector(text);if(parsed.size()!=N)error::send("Incorrect register vector size");
+
+        std::array<std::byte,N> bytes{};std::copy(parsed.begin(),parsed.end(),bytes.begin());return bytes;
+    }
+
+    template <class F>

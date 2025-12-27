@@ -256,3 +256,89 @@ namespace sdb {
 	};
 
 	class line_table::iterator {
+	public:
+		using value_type = entry;
+		using pointer = const entry*;
+		using reference = const entry&;
+		using difference_type = std::ptrdiff_t;
+		using iterator_category = std::forward_iterator_tag;
+
+		iterator(const line_table* table_);
+
+		iterator() = default;
+		iterator(const iterator&) = default;
+		iterator& operator=(const iterator&) = default;
+
+		const line_table::entry& operator*() const { return current_; }
+		const line_table::entry* operator->() const { return &current_; }
+
+		bool operator==(const iterator& rhs) const { return pos_ == rhs.pos_; }
+		bool operator!=(const iterator& rhs) const { return pos_ != rhs.pos_; }
+
+		iterator& operator++();
+		iterator operator++(int);
+
+	private:
+		bool execute_instruction();
+
+		const line_table* table_;
+		line_table::entry current_;
+		line_table::entry registers_;
+		const std::byte* pos_;
+	};
+
+	class die;
+	class compile_unit {
+	public:
+		compile_unit(dwarf& parent,
+			span<const std::byte> data,
+			std::size_t abbrev);
+
+		const dwarf* dwarf_info() const { return parent_; }
+		span<const std::byte> data() const { return data_; }
+
+		const std::unordered_map<std::uint64_t, sdb::abbrev>&
+			abbrev_table() const;
+
+		die root() const;
+		const line_table& lines() const { return *line_table_; }
+	private:
+		dwarf* parent_;
+		span<const std::byte> data_;
+		std::size_t abbrev_offset_;
+		std::unique_ptr<line_table> line_table_;
+	};
+
+	struct source_location {
+		const line_table::file* file = nullptr;
+		std::uint64_t line = 0;
+	};
+	class die {
+	public:
+		explicit die(const std::byte* next) : next_(next) {}
+		die(const std::byte* pos, const compile_unit* cu, const abbrev* abbrev,
+			std::vector<const std::byte*> attr_locs, const std::byte* next) :
+			pos_(pos), cu_(cu), abbrev_(abbrev),
+			attr_locs_(std::move(attr_locs)), next_(next) {}
+
+		const compile_unit* cu() const { return cu_; }
+		const abbrev* abbrev_entry() const { return abbrev_; }
+		const std::byte* position() const { return pos_; }
+		const std::byte* next() const { return next_; }
+
+		class children_range;
+		children_range children() const;
+
+		bool contains(std::uint64_t attribute) const;
+		attr operator[](std::uint64_t attribute) const;
+
+		file_addr low_pc() const;
+		file_addr high_pc() const;
+
+		bool contains_address(file_addr address) const;
+
+		std::optional<std::string_view> name() const;
+
+		source_location location() const;
+		const line_table::file& file() const;
+		std::uint64_t line() const;

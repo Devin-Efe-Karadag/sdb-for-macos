@@ -986,6 +986,191 @@ void sdb::dwarf::index() const {
         index_die(cu->root());
     }
 }
+
+std::optional<std::string_view> sdb::die::name() const {
+    if (contains(DW_AT_name)) {
+        return (*this)[DW_AT_name].as_string();
+    }
+
+    if (contains(DW_AT_specification)) {
+        return (*this)[DW_AT_specification].as_reference().name();
+    }
+
+    if (contains(DW_AT_abstract_origin)) {
+        return (*this)[DW_AT_abstract_origin].as_reference().name();
+    }
+
+    return std::nullopt;
+}
+
+void sdb::dwarf::index_die(const die& current, bool in_function) const {
+    bool has_range = current.contains(DW_AT_low_pc) or current.contains(DW_AT_ranges);
+
+    bool is_function = current.abbrev_entry()->tag == DW_TAG_subprogram or
+        current.abbrev_entry()->tag == DW_TAG_inlined_subroutine;
+    if (has_range and is_function) {
+        if (auto name = current.name(); name) {
+            index_entry entry{ current.cu(), current.position() };
+            function_index_.emplace(*name, entry);
+        }
+    }
+
+    if (is_function) {
+        if (current.contains(DW_AT_specification)) {
+            index_entry entry{ current.cu(), current.position() };
+            member_function_index_.insert(std::make_pair(
+                current[DW_AT_specification].as_reference().position(), entry));
+        }
+        else if (current.contains(DW_AT_abstract_origin)) {
+            index_entry entry{ current.cu(), current.position() };
+            member_function_index_.insert(std::make_pair(
+                current[DW_AT_abstract_origin].as_reference().position(), entry));
+        }
+    }
+
+    auto has_location = current.contains(DW_AT_location);
+
+    auto is_variable = current.abbrev_entry()->tag == DW_TAG_variable;
+
+    if (has_location and is_variable and !in_function) {
+        if (auto name = current.name()) {
+            index_entry entry{ current.cu(), current.position() };
+            global_variable_index_.emplace(*name, entry);
+        }
+    }
+
+    if (is_function) in_function = true;
+
+    for (auto child : current.children()) {
+        index_die(child, in_function);
+    }
+}
+
+sdb::compile_unit::compile_unit(
+    dwarf& parent,
+    span<const std::byte> data,
+
+    std::size_t abbrev_offset)
+    : parent_(&parent)
+    , data_(data)
+    , abbrev_offset_(abbrev_offset) {
+    line_table_ = parse_line_table(*this);
+}
+
+sdb::line_table::iterator::iterator(const sdb::line_table* table)
+    : table_(table), pos_(table->data_.begin()) {
+    registers_.is_stmt = table->default_is_stmt_;
+    ++(*this);
+}
+
+sdb::line_table::iterator
+sdb::line_table::begin() const {
+    return iterator(this);
+}
+sdb::line_table::iterator
+sdb::line_table::end() const {
+    return {};
+}
+
+sdb::line_table::iterator&
+sdb::line_table::iterator::operator++() {
+    if (pos_ == table_->data_.end()) {
+        pos_ = nullptr;
+
+        return *this;
+    }
+
+    bool emitted = false;
+    do {
+        emitted = execute_instruction();
+    } while (!emitted);
+
+    current_.file_entry = &table_->file_names_[current_.file_index - 1];
+
+    return *this;
+}
+
+sdb::line_table::iterator
+sdb::line_table::iterator::operator++(int) {
+    auto tmp = *this;
+    ++(*this);
+
+    return tmp;
+}
+
+bool sdb::line_table::iterator::execute_instruction() {
+    auto elf = table_->cu_->dwarf_info()->elf_file();
+    cursor cur({ pos_, table_->data_.end() });
+
+    auto opcode = cur.u8();
+
+    bool emitted = false;
+
+    if (opcode > 0 and opcode < table_->opcode_base_) {
+        switch (opcode) {
+        case DW_LNS_copy:
+            current_ = registers_;
+            registers_.basic_block_start = false;
+            registers_.prologue_end = false;
+            registers_.epilogue_begin = false;
+            registers_.discriminator = 0;
+            emitted = true;
+            break;
+        case DW_LNS_advance_pc:
+            registers_.address += cur.uleb128();
+            break;
+        case DW_LNS_advance_line:
+            registers_.line += cur.sleb128();
+            break;
+        case DW_LNS_set_file:
+            registers_.file_index = cur.uleb128();
+            break;
+        case DW_LNS_set_column:
+            registers_.column = cur.uleb128();
+            break;
+        case DW_LNS_negate_stmt:
+            registers_.is_stmt = !registers_.is_stmt;
+            break;
+        case DW_LNS_set_basic_block:
+            registers_.basic_block_start = true;
+            break;
+        case DW_LNS_const_add_pc:
+            registers_.address +=
+                (255 - table_->opcode_base_) / table_->line_range_;
+            break;
+        case DW_LNS_fixed_advance_pc:
+            registers_.address += cur.u16();
+            break;
+        case DW_LNS_set_prologue_end:
+            registers_.prologue_end = true;
+            break;
+        case DW_LNS_set_epilogue_begin:
+            registers_.epilogue_begin = true;
+            break;
+        case DW_LNS_set_isa:
+            break;
+        default:
+            error::send("Unexpected standard opcode");
+        }
+    }
+    else if (opcode == 0) {
+        auto length = cur.uleb128();
+
+        auto extended_opcode = cur.u8();
+
+        switch (extended_opcode) {
+        case DW_LNE_end_sequence:
+            registers_.end_sequence = true;
+            current_ = registers_;
+            registers_ = entry{};
+            registers_.is_stmt = table_->default_is_stmt_;
+            emitted = true;
+            break;
+        case DW_LNE_set_address:
+            registers_.address = file_addr(
+                *elf, cur.u64());
+            break;
+        case DW_LNE_define_file: {
             auto compilation_dir =
                 table_->cu_->root()[DW_AT_comp_dir].as_string();
             auto file = parse_line_table_file(
