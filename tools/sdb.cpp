@@ -601,3 +601,34 @@ namespace {
 		}
 
 		auto command = args[1];
+
+		if (is_prefix(command, "list")) {
+			handle_breakpoint_list_command(target);
+			return;
+		}
+
+		if (args.size() < 3) {
+			print_help({ "help", "breakpoint" });
+			return;
+		}
+
+		if (is_prefix(command, "set")) {
+			handle_breakpoint_set_command(target, args);
+			return;
+		}
+
+		handle_breakpoint_toggle(target, args);
+	}
+
+	void handle_memory_read_command(
+		sdb::process& process,
+		const std::vector<std::string>& args) {
+		auto address = sdb::to_integral<std::uint64_t>(args[2], 16);
+		if (!address) sdb::error::send("Invalid address format");
+
+		auto n_bytes = 32;
+		if (args.size() == 4) {
+			auto bytes_arg = sdb::to_integral<std::size_t>(args[3]);
+			if (!bytes_arg) sdb::error::send("Invalid number of bytes");
+			n_bytes = *bytes_arg;
+		}

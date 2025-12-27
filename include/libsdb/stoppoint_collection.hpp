@@ -115,3 +115,23 @@ namespace sdb {
     }
 
     template <class Stoppoint, bool Owning>
+    Stoppoint& stoppoint_collection<Stoppoint,Owning>::get_by_id(
+        typename Stoppoint::id_type id) {
+        auto it = find_by_id(id);
+
+        if (it == end(stoppoints_))
+            error::send("Invalid stoppoint id");
+        return **it;
+    }
+
+    template <class Stoppoint, bool Owning>
+
+    const Stoppoint& stoppoint_collection<Stoppoint,Owning>::get_by_id(
+        typename Stoppoint::id_type id) const {
+        return const_cast<stoppoint_collection*>(this)->get_by_id(id);
+    }
+
+    template <class Stoppoint, bool Owning>
+    Stoppoint& stoppoint_collection<Stoppoint,Owning>::get_by_address(
+        virt_addr address) {
+        auto it = find_by_address(address);

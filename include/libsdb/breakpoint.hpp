@@ -58,3 +58,20 @@ namespace sdb {
 		friend target;
 		breakpoint(
 			target& tgt, bool is_hardware = false, bool is_internal = false);
+
+		id_type id_;
+		target* target_;
+		bool is_enabled_ = false;
+		bool is_hardware_ = false;
+		bool is_internal_ = false;        
+		stoppoint_collection<breakpoint_site, false> breakpoint_sites_;
+		breakpoint_site::id_type next_site_id_ = 1;
+		std::function<bool(void)> on_hit_;
+	};
+
+	class function_breakpoint : public breakpoint {
+	public:
+		void resolve() override;
+		std::string_view function_name() const { return function_name_; }
+	private:
+		friend target;
