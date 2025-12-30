@@ -13,3 +13,5 @@ __attribute__((noinline)) int inner(int x){
     std::printf("local=%d\n",local);
 
     return local;
+}
+__attribute__((noinline)) int outer(int x){return inner(x)+1;}

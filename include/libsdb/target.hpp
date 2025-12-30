@@ -51,3 +51,22 @@ namespace sdb {
         sdb::stop_reason step_in(std::optional<pid_t> otid = std::nullopt);
         sdb::stop_reason step_out(std::optional<pid_t> otid = std::nullopt);
         sdb::stop_reason step_over(std::optional<pid_t> otid = std::nullopt);
+
+        sdb::line_table::iterator line_entry_at_pc(std::optional<pid_t> otid = std::nullopt) const;
+        sdb::stop_reason run_until_address(virt_addr address, std::optional<pid_t> otid = std::nullopt);
+
+        struct find_functions_result {
+            std::vector<die> dwarf_functions;
+
+            std::vector<std::pair<const elf*, const Elf64_Sym*>> elf_functions;
+        };
+        find_functions_result find_functions(std::string name) const;
+
+        breakpoint& create_address_breakpoint(
+            virt_addr address,
+
+            bool hardware = false, bool internal = false);
+        breakpoint& create_function_breakpoint(
+            std::string function_name,
+
+            bool hardware = false, bool internal = false);

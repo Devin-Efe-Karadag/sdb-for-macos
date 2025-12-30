@@ -722,3 +722,34 @@ namespace {
 			fmt::print("Current watchpoints:\n");
 			process.watchpoints().for_each([&](auto& point) {
 				fmt::print("{}: address = {:#x}, mode = {}, size = {}, {}\n",
+					point.id(), point.address().addr(),
+					stoppoint_mode_to_string(point.mode()), point.size(),
+					point.is_enabled() ? "enabled" : "disabled");
+				});
+		}
+	}
+
+	void handle_watchpoint_set(sdb::process& process,
+		const std::vector<std::string>& args) {
+		if (args.size() != 5) {
+			print_help({ "help", "watchpoint" });
+			return;
+		}
+		auto address = sdb::to_integral<std::uint64_t>(args[2], 16);
+		auto mode_text = args[3];
+		auto size = sdb::to_integral<std::size_t>(args[4]);
+
+		if (!address or !size or
+			!(mode_text == "write" or
+				mode_text == "rw" or
+				mode_text == "execute")) {
+			print_help({ "help", "watchpoint" });
+			return;
+		}
+
+		sdb::stoppoint_mode mode;
+		if (mode_text == "write") mode = sdb::stoppoint_mode::write;
+		else if (mode_text == "rw") mode = sdb::stoppoint_mode::read_write;
+		else if (mode_text == "execute") mode = sdb::stoppoint_mode::execute;
+
+		process.create_watchpoint(
