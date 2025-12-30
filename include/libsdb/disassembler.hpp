@@ -8,3 +8,12 @@ namespace sdb {
     class disassembler {
         struct instruction {
             virt_addr address;
+
+            std::string text;
+        };
+
+    public:
+        disassembler(process& proc) : process_(&proc) {}
+
+        std::vector<instruction> disassemble(
+            std::size_t n_instructions,

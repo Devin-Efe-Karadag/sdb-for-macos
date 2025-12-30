@@ -632,3 +632,33 @@ namespace {
 			if (!bytes_arg) sdb::error::send("Invalid number of bytes");
 			n_bytes = *bytes_arg;
 		}
+
+		auto data = process.read_memory(sdb::virt_addr{ *address }, n_bytes);
+
+		for (std::size_t i = 0; i < data.size(); i += 16) {
+			auto start = data.begin() + i;
+			auto end = data.begin() + std::min(i + 16, data.size());
+			fmt::print("{:#016x}: {:02x}\n",
+				*address + i, fmt::join(start, end, " "));
+		}
+	}
+
+	void handle_memory_write_command(
+		sdb::process& process,
+		const std::vector<std::string>& args) {
+		if (args.size() != 4) {
+			print_help({ "help", "memory" });
+			return;
+		}
+
+		auto address = sdb::to_integral<std::uint64_t>(args[2], 16);
+		if (!address) sdb::error::send("Invalid address format");
+
+		auto data = sdb::parse_vector(args[3]);
+		process.write_memory(
+			sdb::virt_addr{ *address }, { data.data(), data.size() });
+	}
+
+	void handle_memory_command(
+		sdb::process& process,
+		const std::vector<std::string>& args) {
