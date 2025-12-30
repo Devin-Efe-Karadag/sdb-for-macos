@@ -135,3 +135,22 @@ namespace sdb {
     Stoppoint& stoppoint_collection<Stoppoint,Owning>::get_by_address(
         virt_addr address) {
         auto it = find_by_address(address);
+
+        if (it == end(stoppoints_))
+            error::send("Stoppoint with given address not found");
+        return **it;
+    }
+
+    template <class Stoppoint, bool Owning>
+
+    const Stoppoint& stoppoint_collection<Stoppoint,Owning>::get_by_address(
+        virt_addr address) const {
+        return const_cast<stoppoint_collection*>(this)->get_by_address(address);
+    }
+
+    template <class Stoppoint, bool Owning>
+    void stoppoint_collection<Stoppoint,Owning>::remove_by_id(typename Stoppoint::id_type id) {
+        auto it = find_by_id(id);
+        (**it).disable();
+        stoppoints_.erase(it);
+    }

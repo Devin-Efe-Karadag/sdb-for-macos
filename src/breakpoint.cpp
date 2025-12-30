@@ -70,3 +70,18 @@ void sdb::function_breakpoint::resolve() {
 
     for (auto sym : found_functions.elf_functions) {
         auto file_address = file_addr{ *sym.first, sym.second->st_value };
+
+        auto load_address = file_address.to_virt_addr();
+
+        if (!breakpoint_sites_.contains_address(load_address)) {
+            auto& new_site = target_->get_process().create_breakpoint_site(
+                this, next_site_id_++, load_address, is_hardware_, is_internal_);
+            breakpoint_sites_.push(&new_site);
+
+            if (is_enabled_) new_site.enable();
+        }
+    }
+}
+
+void sdb::line_breakpoint::resolve() {
+    auto entries = target_->get_line_entries_by_line(file_, line_);

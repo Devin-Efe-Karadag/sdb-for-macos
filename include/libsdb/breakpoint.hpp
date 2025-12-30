@@ -75,3 +75,18 @@ namespace sdb {
 		std::string_view function_name() const { return function_name_; }
 	private:
 		friend target;
+		function_breakpoint(
+			target& tgt, std::string function_name,
+			bool is_hardware = false, bool is_internal = false)
+			: breakpoint(tgt, is_hardware, is_internal)
+			, function_name_(std::move(function_name)) {
+			resolve();
+		}
+		std::string function_name_;
+	};
+
+	class line_breakpoint : public breakpoint {
+	public:
+		void resolve() override;
+		const std::filesystem::path file() const { return file_; }
+		std::size_t line() const { return line_; }

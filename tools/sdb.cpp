@@ -662,3 +662,33 @@ namespace {
 	void handle_memory_command(
 		sdb::process& process,
 		const std::vector<std::string>& args) {
+		if (args.size() < 3) {
+			print_help({ "help", "memory" });
+			return;
+		}
+		if (is_prefix(args[1], "read")) {
+			handle_memory_read_command(process, args);
+		}
+		else if (is_prefix(args[1], "write")) {
+			handle_memory_write_command(process, args);
+		}
+		else {
+			print_help({ "help", "memory" });
+		}
+	}
+
+	void handle_disassemble_command(
+		sdb::process& process, const std::vector<std::string>& args) {
+		auto address = process.get_pc();
+		std::size_t n_instructions = 5;
+
+		auto it = args.begin() + 1;
+		while (it != args.end()) {
+			if (*it == "-a" and it + 1 != args.end()) {
+				++it;
+				auto opt_addr = sdb::to_integral<std::uint64_t>(*it++, 16);
+				if (!opt_addr) sdb::error::send("Invalid address format");
+				address = sdb::virt_addr{ *opt_addr };
+			}
+			else if (*it == "-c" and it + 1 != args.end()) {
+				++it;

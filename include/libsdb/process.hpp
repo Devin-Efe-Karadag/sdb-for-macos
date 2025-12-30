@@ -244,3 +244,13 @@ namespace sdb {
 		void populate_existing_threads();
 
 		void read_all_registers(pid_t tid);
+
+		int set_hardware_stoppoint(
+			virt_addr address, stoppoint_mode mode, std::size_t size);
+
+		void augment_stop_reason(stop_reason& reason);
+		bool should_resume_from_syscall(const stop_reason& reason);
+		void swallow_pending_sigstop(pid_t tid);
+
+		void send_continue(pid_t tid);
+		void step_over_breakpoint(pid_t tid);

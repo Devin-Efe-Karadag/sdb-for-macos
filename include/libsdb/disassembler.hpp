@@ -17,3 +17,12 @@ namespace sdb {
 
         std::vector<instruction> disassemble(
             std::size_t n_instructions,
+
+            std::optional<virt_addr> address = std::nullopt);
+
+    private:
+        process* process_;
+    };
+}
+
+#endif

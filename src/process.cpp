@@ -181,6 +181,12 @@ void sdb::process::write_memory(virt_addr addr,span<const std::byte> data) {
     while(offset<data.size()) {
         mach_vm_address_t region=addr.addr()+offset; mach_vm_size_t region_size=0;
         check(mach_vm_region_recurse(task_,&region,&region_size,&depth,reinterpret_cast<vm_region_recurse_info_t>(&info),&n),"find memory region");
+
+        auto at=addr.addr()+offset;
+
+        if(region>at) error::send("Write crosses unmapped memory");
+
+        auto amount=std::min<std::size_t>(data.size()-offset,region+region_size-at);
                 if(match&&!expecting_syscall_exit_){
                     syscall_information info{};info.id=id;info.entry=true;
 
