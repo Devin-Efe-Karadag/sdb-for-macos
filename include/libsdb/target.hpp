@@ -34,3 +34,20 @@ namespace sdb {
         static std::unique_ptr<target> attach(pid_t pid);
 
         process& get_process() { return *process_; }
+
+        const process& get_process() const { return *process_; }
+        void notify_stop(const sdb::stop_reason& reason);
+        file_addr get_pc_file_address(std::optional<pid_t> otid = std::nullopt) const;
+
+        stack& get_stack(std::optional<pid_t> otid = std::nullopt) {
+            auto tid = otid.value_or(process_->current_thread());
+
+            return threads_.at(tid).frames;
+        }
+
+        const stack& get_stack(std::optional<pid_t> otid = std::nullopt) const {
+            return const_cast<target*>(this)->get_stack(otid);
+        }
+        sdb::stop_reason step_in(std::optional<pid_t> otid = std::nullopt);
+        sdb::stop_reason step_out(std::optional<pid_t> otid = std::nullopt);
+        sdb::stop_reason step_over(std::optional<pid_t> otid = std::nullopt);

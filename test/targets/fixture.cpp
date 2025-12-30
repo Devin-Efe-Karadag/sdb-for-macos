@@ -9,3 +9,7 @@ __attribute__((noinline)) double add_double(double a,double b){return a+b;}
 __attribute__((noinline)) int inner(int x){
     int local = x + 3;
     watched = local;
+
+    std::printf("local=%d\n",local);
+
+    return local;

@@ -692,3 +692,33 @@ namespace {
 			}
 			else if (*it == "-c" and it + 1 != args.end()) {
 				++it;
+				auto opt_n = sdb::to_integral<std::size_t>(*it++);
+				if (!opt_n) sdb::error::send("Invalid instruction count");
+				n_instructions = *opt_n;
+			}
+			else {
+				print_help({ "help", "disassemble" });
+				return;
+			}
+		}
+		print_disassembly(process, address, n_instructions);
+	}
+
+	void handle_watchpoint_list(sdb::process& process,
+		const std::vector<std::string>& args) {
+		auto stoppoint_mode_to_string = [](auto mode) {
+			switch (mode) {
+			case sdb::stoppoint_mode::execute: return "execute";
+			case sdb::stoppoint_mode::write: return "write";
+			case sdb::stoppoint_mode::read_write: return "read_write";
+			default: sdb::error::send("Invalid stoppoint mode");
+			}
+			};
+
+		if (process.watchpoints().empty()) {
+			fmt::print("No watchpoints set\n");
+		}
+		else {
+			fmt::print("Current watchpoints:\n");
+			process.watchpoints().for_each([&](auto& point) {
+				fmt::print("{}: address = {:#x}, mode = {}, size = {}, {}\n",
