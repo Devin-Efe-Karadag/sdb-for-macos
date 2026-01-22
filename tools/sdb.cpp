@@ -753,3 +753,33 @@ namespace {
 		else if (mode_text == "execute") mode = sdb::stoppoint_mode::execute;
 
 		process.create_watchpoint(
+			sdb::virt_addr{ *address }, mode, *size).enable();
+	}
+
+	void handle_watchpoint_command(sdb::process& process,
+		const std::vector<std::string>& args) {
+		if (args.size() < 2) {
+			print_help({ "help", "watchpoint" });
+			return;
+		}
+
+		auto command = args[1];
+
+		if (is_prefix(command, "list")) {
+			handle_watchpoint_list(process, args);
+			return;
+		}
+
+		if (is_prefix(command, "set")) {
+			handle_watchpoint_set(process, args);
+			return;
+		}
+
+		if (args.size() < 3) {
+			print_help({ "help", "watchpoint" });
+			return;
+		}
+		auto id = sdb::to_integral<sdb::watchpoint::id_type>(args[2]);
+		if (!id) {
+			std::cerr << "Command expects watchpoint id";
+			return;

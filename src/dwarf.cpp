@@ -489,6 +489,35 @@ namespace {
         sdb::span<const std::byte> instructions = { cur.position(), start + length };
 
         bool fde_has_augmentation = !augmentation.empty();
+
+        return { length, code_alignment_factor, data_alignment_factor,
+            fde_has_augmentation, fde_pointer_encoding, instructions };
+    }
+
+    sdb::call_frame_information::eh_hdr
+        parse_eh_hdr(sdb::dwarf& dwarf) {
+        auto elf = dwarf.elf_file();
+
+        auto eh_hdr_start = *elf->get_section_start_address(".eh_frame_hdr");
+
+        auto text_section_start = *elf->get_section_start_address(".text");
+
+        auto eh_hdr_data = elf->get_section_contents(".eh_frame_hdr");
+        cursor cur(eh_hdr_data);
+
+        auto start = cur.position();
+
+        auto version = cur.u8();
+
+        auto eh_frame_ptr_enc = cur.u8();
+
+        auto fde_count_enc = cur.u8();
+
+        auto table_enc = cur.u8();
+
+        (void)parse_eh_frame_pointer_with_base(cur, eh_frame_ptr_enc, 0);
+
+        auto fde_count = parse_eh_frame_pointer_with_base(
             cur, fde_count_enc, 0);
 
         auto search_table = cur.position();

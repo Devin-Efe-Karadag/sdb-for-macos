@@ -342,3 +342,89 @@ namespace sdb {
 		source_location location() const;
 		const line_table::file& file() const;
 		std::uint64_t line() const;
+
+		struct bitfield_information {
+			std::uint64_t bit_size;
+			std::uint64_t storage_byte_size;
+			std::uint8_t bit_offset;
+		};
+		std::optional<bitfield_information> get_bitfield_information(
+			std::uint64_t class_byte_size) const;
+
+		std::vector<type> parameter_types() const;
+
+	private:
+		const std::byte* pos_ = nullptr;
+		const compile_unit* cu_ = nullptr;
+		const abbrev* abbrev_ = nullptr;
+		const std::byte* next_ = nullptr;
+		std::vector<const std::byte*> attr_locs_;
+	};
+
+	class die::children_range {
+	public:
+		children_range(const die die) : die_(std::move(die)) {}
+		class iterator {
+		public:
+			using value_type = die;
+			using reference = const die&;
+			using pointer = const die*;
+			using difference_type = std::ptrdiff_t;
+			using iterator_category = std::forward_iterator_tag;
+
+			iterator() = default;
+			iterator(const iterator&) = default;
+			iterator& operator=(const iterator&) = default;
+
+			explicit iterator(const die& die);
+
+			const die& operator*() const { return *die_; }
+			const die* operator->() const { return &die_.value(); }
+
+			iterator& operator++();
+			iterator operator++(int);
+
+			bool operator==(const iterator& rhs) const;
+			bool operator!=(const iterator& rhs) const {
+				return !(*this == rhs);
+			}
+		private:
+			std::optional<die> die_;
+		};
+
+		iterator begin() const {
+			if (die_.abbrev_->has_children) {
+				return iterator{ die_ };
+			}
+			return end();
+		}
+		iterator end() const { return iterator{}; }
+	private:
+		die die_;
+	};
+
+	class dwarf;
+	class process;
+	class call_frame_information {
+	public:
+		struct common_information_entry {
+			std::uint32_t length;
+			std::uint64_t code_alignment_factor;
+			std::int64_t data_alignment_factor;
+			bool fde_has_augmentation;
+			std::uint8_t fde_pointer_encoding;
+			span<const std::byte> instructions;
+		};
+
+		struct frame_description_entry {
+			std::uint32_t length;
+			const common_information_entry* cie;
+			file_addr initial_location;
+			std::uint64_t address_range;
+			span<const std::byte> instructions;
+		};
+
+		struct eh_hdr {
+			const std::byte* start;
+			const std::byte* search_table;
+			std::size_t count;
