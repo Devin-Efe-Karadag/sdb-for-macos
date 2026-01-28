@@ -62,3 +62,18 @@ namespace sdb {
     }
 
     template <class F>
+
+    std::optional<F> to_float(std::string_view sv) {
+        std::conditional_t<std::is_same_v<F, long double>, double, F> ret{};
+
+        auto result = std::from_chars(sv.begin(), sv.end(), ret);
+
+        if (result.ec != std::errc{} || result.ptr != sv.end()) {
+            return std::nullopt;
+        }
+
+        return ret;
+    }
+}
+
+#endif

@@ -783,3 +783,33 @@ namespace {
 		if (!id) {
 			std::cerr << "Command expects watchpoint id";
 			return;
+		}
+
+		if (is_prefix(command, "enable")) {
+			process.watchpoints().get_by_id(*id).enable();
+		}
+		else if (is_prefix(command, "disable")) {
+			process.watchpoints().get_by_id(*id).disable();
+		}
+		else if (is_prefix(command, "delete")) {
+			process.watchpoints().remove_by_id(*id);
+		}
+	}
+
+	void handle_syscall_catchpoint_command(
+		sdb::process& process, const std::vector<std::string>& args) {
+		sdb::syscall_catch_policy policy =
+			sdb::syscall_catch_policy::catch_all();
+
+		if (args.size() == 3 and args[2] == "none") {
+			policy = sdb::syscall_catch_policy::catch_none();
+		}
+		else if (args.size() >= 3) {
+			auto syscalls = split(args[2], ',');
+			std::vector<int> to_catch;
+			std::transform(begin(syscalls), end(syscalls),
+				std::back_inserter(to_catch),
+				[](auto& syscall) {
+					return isdigit(syscall[0]) ?
+						sdb::to_integral<int>(syscall).value() :
+						sdb::syscall_name_to_id(syscall);
