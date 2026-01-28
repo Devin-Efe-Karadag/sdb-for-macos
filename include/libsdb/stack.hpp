@@ -38,3 +38,45 @@ namespace sdb {
         void down() { if(current_frame_ <= inline_height_) error::send("Already at youngest frame"); --current_frame_; }
 
         span<const stack_frame> frames() const;
+
+        bool has_frames() const { return !frames_.empty(); }
+
+        const stack_frame& current_frame() const { return frames_.at(current_frame_); }
+
+        std::size_t current_frame_index() const {
+            return current_frame_ - inline_height_;
+        }
+
+        const registers& regs() const;
+        virt_addr get_pc() const;
+
+        stack(target* tgt, pid_t tid) : target_(tgt), tid_(tid) {}
+        pid_t tid() const { return tid_; }
+
+    private:
+        void create_inline_stack_frames(
+            const sdb::registers& regs,
+
+            const std::vector<sdb::die> inline_stack,
+            file_addr pc);
+
+        void create_base_frame(
+            const registers& regs,
+
+            const std::vector<sdb::die> inline_stack,
+            file_addr pc,
+
+            bool inlined);
+
+        target* target_ = nullptr;
+
+        std::uint32_t inline_height_ = 0;
+
+        std::vector<stack_frame> frames_;
+
+        std::size_t current_frame_ = 0;
+        pid_t tid_ = 0;
+    };
+}
+
+#endif
