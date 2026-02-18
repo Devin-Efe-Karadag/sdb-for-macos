@@ -239,3 +239,31 @@ sdb::target::create_address_breakpoint(
     return breakpoints_.push(
         std::unique_ptr<address_breakpoint>(
             new address_breakpoint(
+    }
+    else if (auto elf_func = obj->get_symbol_containing_address(file_address);
+        elf_func and ELF64_ST_TYPE(elf_func.value()->st_info) == STT_FUNC) {
+        func_name = obj->get_string(elf_func.value()->st_name);
+    }
+
+    if (!func_name.empty()) {
+        return elf_filename + "`" + func_name;
+    }
+
+    return "";
+}
+
+void sdb::target::resolve_dynamic_linker_rendezvous(){reload_dynamic_libraries();}
+
+std::vector<sdb::line_table::iterator> sdb::target::get_line_entries_by_line(
+    std::filesystem::path path, std::size_t line) const {
+    std::vector<sdb::line_table::iterator> entries;
+    elves_.for_each([&](auto& elf) {
+        for (auto& cu : elf.get_dwarf().compile_units()) {
+            auto new_entries = cu->lines().get_entries_by_line(path, line);
+            entries.insert(entries.end(), new_entries.begin(), new_entries.end());
+        }
+        });
+    return entries;
+}
+
+void sdb::target::reload_dynamic_libraries(){

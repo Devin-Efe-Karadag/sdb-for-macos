@@ -70,3 +70,20 @@ namespace sdb {
             std::string function_name,
 
             bool hardware = false, bool internal = false);
+        breakpoint& create_line_breakpoint(
+            std::filesystem::path file, std::size_t line,
+
+            bool hardware = false, bool internal = false);
+
+        stoppoint_collection<breakpoint>&
+            breakpoints() { return breakpoints_; }
+        const stoppoint_collection<breakpoint>&
+            breakpoints() const { return breakpoints_; }
+
+        std::string function_name_at_address(
+            virt_addr address) const;
+
+        elf_collection& get_elves() { return elves_; }
+
+        const elf_collection& get_elves() const { return elves_; }
+        elf& get_main_elf() { return *main_elf_; }
