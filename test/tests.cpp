@@ -47,3 +47,16 @@ int main(int argc,char** argv){try{
 
         auto triple=t->evaluate_expression("triple_add(triple_input)");require(triple&&sdb::from_bytes<long>(triple->return_value.data_ptr()+16)==7,"indirect aggregate argument/return");
         t->step_out();require(t->function_name_at_address(p.get_pc()).find("outer")!=std::string::npos,"finish did not return to caller");
+        auto addr=symbol(*t,"watched");auto& w=p.create_watchpoint(addr,sdb::stoppoint_mode::write,8);w.enable();p.resume();auto stop=p.wait_on_signal();
+        require(stop.reason==sdb::process_state::stopped,"watchpoint missed");require(stop.trap_reason==sdb::trap_type::hardware_break,"watchpoint not classified");w.disable();p.resume();require(p.wait_on_signal().reason==sdb::process_state::exited,"watchpoint resume failed");
+    }else if(test=="hardware"){
+        auto addr=symbol(*t,"inner(int)");auto& bp=p.create_breakpoint_site(addr,true);bp.enable();p.resume();auto stop=p.wait_on_signal();require(stop.is_breakpoint()&&p.get_pc()==addr,"hardware breakpoint missed");bp.disable();p.resume();require(p.wait_on_signal().reason==sdb::process_state::exited,"hardware resume failed");
+    }else if(test=="threads"){
+        auto& bp=t->create_function_breakpoint("worker");bp.enable();p.resume();auto stop=p.wait_on_signal();require(stop.is_breakpoint(),"worker breakpoint missed");require(p.thread_states().size()>=2,"worker not enumerated");auto pc=p.get_pc();auto tid=p.current_thread();p.step_instruction();require(p.current_thread()==tid&&p.get_pc().addr()==pc.addr()+4,"worker stepping failed");bp.disable();p.resume();require(p.wait_on_signal().reason==sdb::process_state::exited,"threaded process did not exit");
+    }else if(test=="syscall"){
+        p.set_syscall_catch_policy(sdb::syscall_catch_policy::catch_some({20}));p.resume();auto entry=p.wait_on_signal();require(entry.syscall_info&&entry.syscall_info->entry&&entry.syscall_info->id==20,"syscall entry missing");p.resume();auto exit=p.wait_on_signal();require(exit.syscall_info&&!exit.syscall_info->entry&&exit.syscall_info->ret==p.pid(),"syscall return wrong");p.set_syscall_catch_policy(sdb::syscall_catch_policy::catch_none());p.resume();require(p.wait_on_signal().reason==sdb::process_state::exited,"syscall continue failed");
+    }else if(test=="dynamic"){
+        auto& bp=t->create_function_breakpoint("library_value");bp.enable();p.resume();auto stop=p.wait_on_signal();if(!stop.is_breakpoint())std::cerr<<"dynamic state="<<int(stop.reason)<<" info="<<int(stop.info)<<" trap="<<(stop.trap_reason?int(*stop.trap_reason):-1)<<" pc="<<std::hex<<p.get_pc().addr()<<std::dec<<"\n";require(stop.is_breakpoint(),"pending library breakpoint missed");require(t->function_name_at_address(p.get_pc()).find("library_value")!=std::string::npos,"wrong shared-library function");bp.disable();p.resume();require(p.wait_on_signal().reason==sdb::process_state::exited,"dlclose resume failed");
+    }else throw std::runtime_error("unknown case");
+    std::cout<<"PASS "<<test<<'\n';return 0;
+}catch(const std::exception& e){std::cerr<<"FAIL: "<<e.what()<<'\n';return 1;}}

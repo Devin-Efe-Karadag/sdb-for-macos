@@ -267,3 +267,10 @@ std::vector<sdb::line_table::iterator> sdb::target::get_line_entries_by_line(
 }
 
 void sdb::target::reload_dynamic_libraries(){
+    task_dyld_info_data_t task_info_data{};mach_msg_type_number_t n=TASK_DYLD_INFO_COUNT;
+
+    if(task_info(process_->task_port(),TASK_DYLD_INFO,reinterpret_cast<task_info_t>(&task_info_data),&n)!=KERN_SUCCESS)error::send("Cannot read dyld information");
+
+    if(!task_info_data.all_image_info_addr)return;
+
+    auto info=process_->read_memory_as<dyld_all_image_infos>(virt_addr(task_info_data.all_image_info_addr));

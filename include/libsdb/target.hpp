@@ -87,3 +87,21 @@ namespace sdb {
 
         const elf_collection& get_elves() const { return elves_; }
         elf& get_main_elf() { return *main_elf_; }
+
+        const elf& get_main_elf() const { return *main_elf_; }
+
+        std::vector<line_table::iterator> get_line_entries_by_line(
+            std::filesystem::path path, std::size_t line) const;
+
+        std::unordered_map<pid_t, thread>& threads() {
+            return threads_;
+        }
+
+        const std::unordered_map<pid_t, thread>& threads() const {
+            return threads_;
+        }
+
+        void notify_thread_lifecycle_event(const sdb::stop_reason& reason);
+
+        std::vector<std::byte> read_location_data(
+            const dwarf_expression::result& loc, std::size_t size,

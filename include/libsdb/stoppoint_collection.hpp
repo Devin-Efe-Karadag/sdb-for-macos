@@ -154,3 +154,23 @@ namespace sdb {
         (**it).disable();
         stoppoints_.erase(it);
     }
+
+    template <class Stoppoint, bool Owning>
+    void stoppoint_collection<Stoppoint,Owning>::remove_by_address(virt_addr address) {
+        auto it = find_by_address(address);
+        (**it).disable();
+        stoppoints_.erase(it);
+    }
+
+    template <class Stoppoint, bool Owning>
+    template <class F>
+        void stoppoint_collection<Stoppoint,Owning>::for_each(F f) {
+        for (auto& point : stoppoints_) {
+            f(*point);
+        }
+    }
+    template <class Stoppoint, bool Owning>
+    template <class F>
+    void stoppoint_collection<Stoppoint,Owning>::for_each(F f) const {
+        for (const auto& point : stoppoints_) {
+            f(*point);

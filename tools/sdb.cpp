@@ -813,3 +813,33 @@ namespace {
 					return isdigit(syscall[0]) ?
 						sdb::to_integral<int>(syscall).value() :
 						sdb::syscall_name_to_id(syscall);
+				});
+			policy = sdb::syscall_catch_policy::catch_some(std::move(to_catch));
+		}
+
+		process.set_syscall_catch_policy(std::move(policy));
+	}
+
+	void handle_catchpoint_command(
+		sdb::process& process, const std::vector<std::string>& args) {
+		if (args.size() < 2) {
+			print_help({ "help", "catchpoint" });
+			return;
+		}
+
+		if (is_prefix(args[1], "syscall")) {
+			handle_syscall_catchpoint_command(process, args);
+		}
+	}
+
+	void handle_thread_command(
+		sdb::target& target, const std::vector<std::string>& args) {
+		if (args.size() < 2) {
+			print_help({ "help", "thread" });
+			return;
+		}
+
+		if (is_prefix(args[1], "list")) {
+			for (auto& [tid, thread] : target.threads()) {
+				auto prefix = tid == target.get_process().current_thread() ? "*" : " ";
+				fmt::print(
