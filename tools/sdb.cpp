@@ -843,3 +843,33 @@ namespace {
 			for (auto& [tid, thread] : target.threads()) {
 				auto prefix = tid == target.get_process().current_thread() ? "*" : " ";
 				fmt::print(
+					"{}Thread {}: {}\n", prefix, tid,
+					get_signal_stop_reason(target, thread.state->reason));
+			}
+		}
+
+		else if (is_prefix(args[1], "select")) {
+			if (args.size() != 3) {
+				print_help({ "help", "thread" });
+				return;
+			}
+			auto tid = sdb::to_integral<pid_t>(args[2]);
+			if (!tid) {
+				std::cerr << "Invalid thread id\n";
+				return;
+			}
+			target.get_process().set_current_thread(*tid);
+		}
+	}
+
+	void handle_variable_locals_command(sdb::target& target) {
+		auto pc = target.get_pc_file_address();
+		auto scopes = pc.elf_file()->get_dwarf().scopes_at_address(pc);
+		std::unordered_set<std::string> seen;
+		for (auto& scope : scopes) {
+			for (auto& var : scope.children()) {
+				std::string name(var.name().value_or(""));
+				auto tag = var.abbrev_entry()->tag;
+				if (tag == DW_TAG_variable or tag == DW_TAG_formal_parameter and
+					!name.empty() and !seen.count(name)) {
+					auto loc = var[DW_AT_location].as_evaluated_location(

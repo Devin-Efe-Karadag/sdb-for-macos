@@ -105,3 +105,22 @@ namespace sdb {
 
         std::vector<std::byte> read_location_data(
             const dwarf_expression::result& loc, std::size_t size,
+
+            std::optional<pid_t> otid = std::nullopt) const;
+
+        struct resolve_indirect_name_result {
+            std::optional<typed_data> variable;
+
+            std::vector<die> funcs;
+        };
+        resolve_indirect_name_result resolve_indirect_name(
+            std::string name, sdb::file_addr pc) const;
+        std::optional<die> find_variable(std::string name, file_addr pc) const;
+
+        virt_addr inferior_malloc(std::size_t size);
+
+        struct evaluate_expression_result {
+            typed_data return_value;
+
+            std::uint64_t id;
+        };

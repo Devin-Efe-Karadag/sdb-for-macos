@@ -1545,3 +1545,739 @@ namespace {
             }
             case DW_CFA_val_offset_sf: {
                 auto reg = cur.uleb128();
+
+                auto offset = cur.sleb128() * cie.data_alignment_factor;
+                ctx.register_rules.emplace(reg, val_offset_rule{ offset });
+                break;
+            }
+            case DW_CFA_register: {
+                auto reg = cur.uleb128();
+                ctx.register_rules.emplace(
+                    reg, register_rule{ static_cast<std::uint32_t>(cur.uleb128()) });
+                break;
+            }
+            case DW_CFA_restore_extended: {
+                auto reg = cur.uleb128();
+                ctx.register_rules.emplace(reg, ctx.cie_register_rules.at(reg));
+                break;
+            }
+            case DW_CFA_remember_state:
+                ctx.rule_stack.push_back({ ctx.register_rules, ctx.cfa_rule });
+                break;
+            case DW_CFA_restore_state:
+                ctx.register_rules = ctx.rule_stack.back().first;
+                ctx.cfa_rule = ctx.rule_stack.back().second;
+                ctx.rule_stack.pop_back();
+                break;
+            }
+        }
+    }
+
+    sdb::registers execute_unwind_rules(
+        unwind_context& ctx, sdb::registers& old_regs,
+
+        const sdb::process& proc) {
+        auto unwound_regs = old_regs;
+
+        auto dwexp_addr_result = [&](const auto& res) {
+            auto& loc = std::get<sdb::dwarf_expression::simple_location>(res);
+            auto& addr_res = std::get<sdb::dwarf_expression::address_result>(loc);
+
+            return sdb::virt_addr{ addr_res.address.addr() };
+            };
+
+        std::uint64_t cfa;
+
+        if (auto reg_rule = std::get_if<cfa_register_rule>(&ctx.cfa_rule)) {
+            auto reg_info = sdb::register_info_by_dwarf(reg_rule->reg);
+            cfa = std::get<std::uint64_t>(old_regs.read(reg_info)) +
+                reg_rule->offset;
+        }
+        else if (auto expr = std::get_if<cfa_expr_rule>(&ctx.cfa_rule)) {
+            auto res = expr->expr.eval(proc, old_regs);
+            cfa = dwexp_addr_result(res).addr();
+        }
+        old_regs.set_cfa(sdb::virt_addr{ cfa });
+        unwound_regs.write_by_id(sdb::stack_pointer_register, { cfa }, false);
+
+        for (auto [reg, rule] : ctx.register_rules) {
+            auto reg_info = sdb::register_info_by_dwarf(reg);
+
+            if (auto undef = std::get_if<undefined_rule>(&rule)) {
+                unwound_regs.undefine(reg_info.id);
+            }
+            else if (auto same = std::get_if<same_rule>(&rule)) {
+                // Do nothing
+            }
+            else if (auto reg = std::get_if<register_rule>(&rule)) {
+                auto other_reg = sdb::register_info_by_dwarf(reg->reg);
+                unwound_regs.write(reg_info, old_regs.read(other_reg), false);
+            }
+            else if (auto offset = std::get_if<offset_rule>(&rule)) {
+                auto addr = sdb::virt_addr{ cfa + offset->offset };
+
+                auto value = sdb::from_bytes<std::uint64_t>(
+                    proc.read_memory(addr, 8).data());
+                unwound_regs.write(reg_info, { value }, false);
+            }
+            else if (auto val_offset = std::get_if<val_offset_rule>(&rule)) {
+                auto addr = cfa + val_offset->offset;
+                unwound_regs.write(reg_info, { addr }, false);
+            }
+            else if (auto expr = std::get_if<expr_rule>(&rule)) {
+                auto res = expr->expr.eval(proc, old_regs, true);
+
+                auto addr = dwexp_addr_result(res);
+
+                auto value = proc.read_memory_as<std::uint64_t>(addr);
+                unwound_regs.write(reg_info, { value }, false);
+            }
+            else if (auto val_expr = std::get_if<val_expr_rule>(&rule)) {
+                auto res = val_expr->expr.eval(proc, old_regs, true);
+
+                auto addr = dwexp_addr_result(res);
+                unwound_regs.write(reg_info, { addr.addr() }, false);
+            }
+        }
+
+        return unwound_regs;
+    }
+}
+
+sdb::registers sdb::call_frame_information::unwind(
+    const sdb::process& proc, file_addr pc, registers& regs) const {
+    const std::byte* fde_start = nullptr;
+
+    if(auto compact=unwind_compact(proc,pc,regs))return *compact;
+
+    auto section = dwarf_->elf_file()->get_section_contents(".eh_frame");
+
+    auto pos = section.begin();
+
+    while (pos && section.end() - pos >= 8) {
+        auto length = from_bytes<std::uint32_t>(pos);
+
+        if (!length) break;
+
+        if (length == 0xffffffff || length < 4 || length > section.end() - pos - 4) error::send("Invalid CFI record length");
+
+        if (from_bytes<std::uint32_t>(pos + 4) != 0) {
+            auto candidate = parse_fde(*this, cursor({pos, pos + length + 4}));
+
+            if (pc >= candidate.initial_location && pc < candidate.initial_location + candidate.address_range) { fde_start = pos; break; }
+        }
+        pos += length + 4;
+    }
+
+    if (!fde_start) {
+        // Apple's compact-unwind frame mode uses the standard x29 frame chain.
+
+        auto fp = regs.read_by_id_as<std::uint64_t>(register_id::fp);
+
+        auto out = regs;
+
+        if (!fp || fp % 16) { out.write_by_id(register_id::pc, std::uint64_t(0), false); return out; }
+
+        auto next = proc.read_memory_as<std::uint64_t>(virt_addr(fp));
+
+        auto ret = proc.read_memory_as<std::uint64_t>(virt_addr(fp + 8)) & 0x0000ffffffffffffULL;
+        regs.set_cfa(virt_addr(fp + 16));
+        out.write_by_id(register_id::sp, fp + 16, false);
+        out.write_by_id(register_id::fp, next, false);
+        out.write_by_id(register_id::pc, ret, false);
+
+        return out;
+    }
+
+    auto eh_frame_end = dwarf_->elf_file()->get_section_contents(".eh_frame").end();
+
+    cursor cur({ fde_start, eh_frame_end });
+
+    auto fde = parse_fde(*this, cur);
+
+    if (pc < fde.initial_location
+        or pc >= fde.initial_location + fde.address_range) {
+        sdb::error::send("No unwind information at PC");
+    }
+
+    unwind_context ctx{};
+    ctx.cur = cursor(fde.cie->instructions);
+
+    while (!ctx.cur.finished()) {
+        execute_cfi_instruction(*dwarf_->elf_file(), fde, ctx, pc);
+    }
+
+    ctx.cie_register_rules = ctx.register_rules;
+    ctx.cur = cursor(fde.instructions);
+    ctx.location = fde.initial_location;
+
+    while (!ctx.cur.finished() and ctx.location <= pc) {
+        execute_cfi_instruction(*dwarf_->elf_file(), fde, ctx, pc);
+    }
+
+    auto result = execute_unwind_rules(ctx, regs, proc);
+    result.write_by_id(register_id::pc, result.read_by_id_as<std::uint64_t>(register_id::lr) & 0x0000ffffffffffffULL, false);
+
+    return result;
+}
+
+namespace {
+    sdb::virt_addr read_frame_base_result(
+        const sdb::dwarf_expression::result& loc,
+
+        const sdb::registers& regs) {
+        auto simple_loc = std::get_if<sdb::dwarf_expression::simple_location>(&loc);
+
+        if (!simple_loc) sdb::error::send("Unsupported frame base location");
+
+        if (auto addr_res = std::get_if<sdb::dwarf_expression::address_result>(simple_loc)) {
+            return addr_res->address;
+        }
+        sdb::error::send("Unsupported frame base location");
+    }
+}
+
+sdb::dwarf_expression::result
+sdb::dwarf_expression::eval(
+    const sdb::process& proc, const registers& regs, bool push_cfa) const {
+    cursor cur({ expr_data_.begin(), expr_data_.end() });
+
+    std::vector<std::uint64_t> stack;
+
+    if (push_cfa) stack.push_back(regs.cfa().addr());
+
+    std::optional<simple_location> most_recent_location;
+
+    std::vector<pieces_result::piece> pieces;
+
+    bool result_is_address = true;
+
+    auto binop = [&](auto op) {
+        auto rhs = stack.back();
+        stack.pop_back();
+
+        auto lhs = stack.back();
+        stack.pop_back();
+        stack.push_back(op(lhs, rhs));
+        };
+
+    auto relop = [&](auto op) {
+        auto rhs = static_cast<std::int64_t>(stack.back());
+        stack.pop_back();
+
+        auto lhs = static_cast<std::int64_t>(stack.back());
+        stack.pop_back();
+        stack.push_back(op(lhs, rhs) ? 1 : 0);
+        };
+
+    auto virt_pc = virt_addr{
+        regs.read_by_id_as<std::uint64_t>(program_counter_register)
+    };
+
+    auto pc = virt_pc.to_file_addr(*parent_->elf_file());
+
+    auto func = parent_->function_containing_address(pc);
+
+    auto get_current_location = [&]() {
+        simple_location loc;
+
+        if (stack.empty()) {
+            loc = most_recent_location.value_or(empty_result{});
+            most_recent_location.reset();
+        }
+        else if (result_is_address) {
+            loc = address_result{ virt_addr{stack.back()} };
+            stack.pop_back();
+        }
+        else {
+            loc = literal_result{ stack.back() };
+            stack.pop_back();
+            result_is_address = true;
+        }
+
+        return loc;
+        };
+
+    while (!cur.finished()) {
+        auto opcode = cur.u8();
+
+        if (opcode >= DW_OP_lit0 and opcode <= DW_OP_lit31) {
+            stack.push_back(opcode - DW_OP_lit0);
+        }
+        else if (opcode >= DW_OP_breg0 and opcode <= DW_OP_breg31) {
+            auto reg = opcode - DW_OP_breg0;
+
+            auto reg_val = regs.read(sdb::register_info_by_dwarf(reg));
+
+            auto offset = cur.sleb128();
+            stack.push_back(std::get<std::uint64_t>(reg_val) + offset);
+        }
+        else if (opcode >= DW_OP_reg0 and opcode <= DW_OP_reg31) {
+            auto reg = opcode - DW_OP_reg0;
+
+            if (in_frame_info_) {
+                auto reg_val = regs.read(sdb::register_info_by_dwarf(reg));
+                stack.push_back(std::get<std::uint64_t>(reg_val));
+            }
+            else {
+                most_recent_location = register_result{
+                    static_cast<std::uint64_t>(reg)
+                };
+            }
+        }
+
+        switch (opcode) {
+        case DW_OP_addr: {
+            auto addr = file_addr{
+                *parent_->elf_file(), cur.u64()
+            };
+            stack.push_back(addr.to_virt_addr().addr());
+            break;
+        }
+        case DW_OP_const1u:
+            stack.push_back(cur.u8());
+            break;
+        case DW_OP_const1s:
+            stack.push_back(cur.s8());
+            break;
+        case DW_OP_const2u:
+            stack.push_back(cur.u16());
+            break;
+        case DW_OP_const2s:
+            stack.push_back(cur.s16());
+            break;
+        case DW_OP_const4u:
+            stack.push_back(cur.u32());
+            break;
+        case DW_OP_const4s:
+            stack.push_back(cur.s32());
+            break;
+        case DW_OP_const8u:
+            stack.push_back(cur.u64());
+            break;
+        case DW_OP_const8s:
+            stack.push_back(cur.s64());
+            break;
+        case DW_OP_constu:
+            stack.push_back(cur.uleb128());
+            break;
+        case DW_OP_consts:
+            stack.push_back(cur.sleb128());
+            break;
+
+        case DW_OP_bregx: {
+            auto reg_val = regs.read(
+                sdb::register_info_by_dwarf(cur.uleb128()));
+            stack.push_back(
+                std::get<std::uint64_t>(reg_val) + cur.sleb128());
+            break;
+        }
+        case DW_OP_fbreg: {
+            auto offset = cur.sleb128();
+
+            auto fb_loc = func.value()[DW_AT_frame_base].as_evaluated_location(proc, regs, true);
+
+            auto fb_addr = read_frame_base_result(fb_loc, regs);
+            stack.push_back(fb_addr.addr() + offset);
+            break;
+        }
+
+        case DW_OP_dup:
+            stack.push_back(stack.back());
+            break;
+        case DW_OP_drop:
+            stack.pop_back();
+            break;
+        case DW_OP_pick:
+            stack.push_back(
+                stack.rbegin()[cur.u8()]);
+            break;
+        case DW_OP_over:
+            stack.push_back(stack.rbegin()[1]);
+            break;
+        case DW_OP_swap:
+            std::swap(stack.rbegin()[0], stack.rbegin()[1]);
+            break;
+        case DW_OP_rot:
+            std::rotate(stack.rbegin(), stack.rbegin() + 1, stack.rbegin() + 3);
+            break;
+        case DW_OP_deref: {
+            auto addr = virt_addr{ stack.back() };
+            stack.back() = proc.read_memory_as<std::uint64_t>(addr);
+            break;
+        }
+        case DW_OP_deref_size: {
+            auto addr = virt_addr{ stack.back() };
+
+            auto size_to_read = cur.u8();
+
+            auto mem = proc.read_memory(addr, size_to_read);
+
+            std::uint64_t res = 0;
+
+            std::copy(mem.data(), mem.data() + mem.size(),
+                reinterpret_cast<std::byte*>(&res));
+            stack.back() = res;
+            break;
+        }
+        case DW_OP_xderef:
+            sdb::error::send("DW_OP_xderef not supported");
+        case DW_OP_xderef_size:
+            sdb::error::send("DW_OP_xderef_size not supported");
+        case DW_OP_push_object_address:
+            sdb::error::send("Unsupported opcode DW_OP_push_object_address");
+        case DW_OP_form_tls_address:
+            sdb::error::send("Unsupported opcode DW_OP_form_tls_address");
+        case DW_OP_call_frame_cfa:
+            stack.push_back(regs.cfa().addr());
+            break;
+
+        case DW_OP_minus:
+            binop(std::minus{});
+            break;
+        case DW_OP_mod:
+            binop(std::modulus{});
+            break;
+        case DW_OP_mul:
+            binop(std::multiplies{});
+            break;
+        case DW_OP_and:
+            binop(std::bit_and{});
+            break;
+        case DW_OP_or:
+            binop(std::bit_or{});
+            break;
+        case DW_OP_plus:
+            binop(std::plus{});
+            break;
+        case DW_OP_shl:
+            binop([](auto lhs, auto rhs) { return lhs << rhs; });
+            break;
+        case DW_OP_shr:
+            binop([](auto lhs, auto rhs) { return lhs >> rhs; });
+            break;
+        case DW_OP_shra:
+            binop([](auto lhs, auto rhs) {
+                return static_cast<std::int64_t>(lhs) >> rhs; });
+            break;
+        case DW_OP_xor:
+            binop(std::bit_xor{});
+            break;
+        case DW_OP_div: {
+            auto rhs = static_cast<std::int64_t>(stack.back());
+            stack.pop_back();
+
+            auto lhs = static_cast<std::int64_t>(stack.back());
+            stack.pop_back();
+            stack.push_back(static_cast<std::uint64_t>(lhs / rhs));
+            break;
+        }
+        case DW_OP_abs: {
+            auto sval = static_cast<std::int64_t>(stack.back());
+            sval = std::abs(sval);
+            stack.back() = static_cast<std::uint64_t>(sval);
+            break;
+        }
+        case DW_OP_neg: {
+            auto neg = -static_cast<std::int64_t>(stack.back());
+            stack.back() = static_cast<std::uint64_t>(neg);
+            break;
+        }
+        case DW_OP_plus_uconst:
+            stack.back() += cur.uleb128();
+            break;
+        case DW_OP_not:
+            stack.back() = ~stack.back();
+            break;
+
+        case DW_OP_le:
+            relop(std::less_equal{});
+            break;
+        case DW_OP_ge:
+            relop(std::greater_equal{});
+            break;
+        case DW_OP_eq:
+            relop(std::equal_to{});
+            break;
+        case DW_OP_lt:
+            relop(std::less{});
+            break;
+        case DW_OP_gt:
+            relop(std::greater{});
+            break;
+        case DW_OP_ne:
+            relop(std::not_equal_to{});
+            break;
+        case DW_OP_skip:
+            cur += cur.s16();
+            break;
+        case DW_OP_bra:
+            if (stack.back() != 0) {
+                cur += cur.s16();
+            }
+            stack.pop_back();
+            break;
+        case DW_OP_call2:
+            sdb::error::send("Unsupported opcode DW_OP_call2");
+        case DW_OP_call4:
+            sdb::error::send("Unsupported opcode DW_OP_call4");
+        case DW_OP_call_ref:
+            sdb::error::send("Unsupported opcode DW_OP_call_ref");
+        case DW_OP_regx:
+            if (in_frame_info_) {
+                auto reg_val = regs.read(
+                    sdb::register_info_by_dwarf(cur.uleb128()));
+                stack.push_back(
+                    std::get<std::uint64_t>(reg_val));
+            }
+            else {
+                most_recent_location = register_result{
+                    cur.uleb128() };
+            }
+            break;
+
+        case DW_OP_implicit_value: {
+            auto length = cur.uleb128();
+            most_recent_location = data_result{
+                span<const std::byte>{cur.position(), length} };
+            break;
+        }
+        case DW_OP_stack_value:
+            result_is_address = false;
+            break;
+        case DW_OP_nop:
+            break;
+
+        case DW_OP_piece: {
+            auto byte_size = cur.uleb128();
+            simple_location loc = get_current_location();
+            pieces.push_back(pieces_result::piece{ loc, byte_size * 8 });
+            break;
+        }
+        case DW_OP_bit_piece: {
+            auto bit_size = cur.uleb128();
+
+            auto offset = cur.uleb128();
+            simple_location loc = get_current_location();
+            pieces.push_back(pieces_result::piece{ loc, bit_size, offset });
+            break;
+        }
+        }
+    }
+
+    if (!pieces.empty()) {
+        return pieces_result{ pieces };
+    }
+
+    return get_current_location();
+}
+
+sdb::dwarf_expression::result
+sdb::location_list::eval(
+    const sdb::process& proc, const registers& regs) const {
+    auto virt_pc = virt_addr{
+        regs.read_by_id_as<std::uint64_t>(program_counter_register)
+    };
+
+    auto pc = virt_pc.to_file_addr(*parent_->elf_file());
+
+    auto func = parent_->function_containing_address(pc);
+
+    cursor cur({ expr_data_.begin(), expr_data_.end() });
+    constexpr auto base_address_flag = ~static_cast<std::uint64_t>(0);
+
+    auto base_address = cu_->root()[DW_AT_low_pc].as_address().addr();
+
+    auto first = cur.u64();
+
+    auto second = cur.u64();
+
+    while (!(first == 0 and second == 0)) {
+        if (first == base_address_flag) {
+            base_address = second;
+        }
+        else {
+            auto length = cur.u16();
+
+            if (pc.addr() >= base_address + first and 
+                pc.addr() < base_address + second) {
+                dwarf_expression expr(*parent_, { cur.position(), cur.position() + length }, in_frame_info_);
+
+                return expr.eval(proc, regs);
+            }
+            else {
+                cur += length;
+            }
+        }
+        first = cur.u64();
+        second = cur.u64();
+    }
+
+    return dwarf_expression::empty_result{};
+}
+
+sdb::dwarf_expression sdb::attr::as_expression(bool in_frame_info) const {
+    cursor cur({ location_, cu_->data().end() });
+
+    auto length = cur.uleb128();
+    span<const std::byte> data{ cur.position(), length };
+
+    return dwarf_expression{ *cu_->dwarf_info(), data, in_frame_info };
+}
+
+sdb::location_list sdb::attr::as_location_list(bool in_frame_info) const {
+    auto section = cu_->dwarf_info()->elf_file()->get_section_contents(
+        ".debug_loc");
+
+    cursor cur({ location_, cu_->data().end() });
+
+    auto offset = cur.u32();
+
+    span<const std::byte> data(section.begin() + offset, section.end());
+
+    return location_list{ *cu_->dwarf_info(), *cu_, data, in_frame_info };
+}
+
+sdb::dwarf_expression::result
+sdb::attr::as_evaluated_location(
+    const sdb::process& proc, const registers& regs, bool in_frame_info) const {
+    if (form_ == DW_FORM_exprloc) {
+        auto expr = as_expression(in_frame_info);
+
+        return expr.eval(proc, regs);
+    }
+    else if (form_ == DW_FORM_sec_offset) {
+        auto loc_list = as_location_list(in_frame_info);
+
+        return loc_list.eval(proc, regs);
+    }
+    else {
+        error::send("Invalid location type");
+    }
+}
+
+std::optional<sdb::die> sdb::dwarf::find_global_variable(std::string name) const {
+    index();
+
+    auto it = global_variable_index_.find(name);
+
+    if (it != global_variable_index_.end()) {
+        cursor cur({ it->second.pos, it->second.cu->data().end() });
+
+        return parse_die(*it->second.cu, cur);
+    }
+
+    return std::nullopt;
+}
+
+sdb::type sdb::attr::as_type() const {
+    return sdb::type{ as_reference() };
+}
+
+std::optional<sdb::die::bitfield_information> sdb::die::get_bitfield_information(
+    std::uint64_t class_byte_size) const {
+    if (!contains(DW_AT_bit_offset) and !contains(DW_AT_data_bit_offset)) {
+        return std::nullopt;
+    }
+
+    auto bit_size = (*this)[DW_AT_bit_size].as_int();
+
+    auto storage_byte_size = contains(DW_AT_byte_size) ?
+        (*this)[DW_AT_byte_size].as_int() :
+        class_byte_size;
+    auto storage_bit_size = storage_byte_size * 8;
+
+    std::uint8_t bit_offset = 0;
+
+    if (contains(DW_AT_bit_offset)) {
+        auto offset_field = (*this)[DW_AT_bit_offset].as_int();
+        bit_offset = storage_bit_size - offset_field - bit_size;
+    }
+
+    if (contains(DW_AT_data_bit_offset)) {
+        bit_offset = (*this)[DW_AT_data_bit_offset].as_int() % 8;
+    }
+
+    return bitfield_information{ bit_size, storage_byte_size, bit_offset };
+}
+
+namespace {
+    void scopes_at_address_in_die(
+        const sdb::die& die, sdb::file_addr address,
+
+        std::vector<sdb::die>& scopes) {
+        for (auto& c : die.children()) {
+            if (c.contains_address(address)) {
+                scopes_at_address_in_die(c, address, scopes);
+                scopes.push_back(c);
+            }
+        }
+    }
+}
+
+std::vector<sdb::die> sdb::dwarf::scopes_at_address(file_addr address) const {
+    auto func = function_containing_address(address);
+
+    if (!func) return {};
+
+    std::vector<sdb::die> scopes;
+    scopes_at_address_in_die(*func, address, scopes);
+    scopes.push_back(*func);
+
+    return scopes;
+}
+
+std::optional<sdb::die> sdb::dwarf::find_local_variable(
+    std::string name, file_addr pc) const {
+    auto scopes = scopes_at_address(pc);
+
+    for (auto& scope : scopes) {
+        for (auto& child : scope.children()) {
+            auto tag = child.abbrev_entry()->tag;
+
+            if ((tag == DW_TAG_variable or
+                tag == DW_TAG_formal_parameter) and
+                child.name() == name) {
+                return child;
+            }
+        }
+    }
+
+    return std::nullopt;
+}
+
+std::vector<sdb::type> sdb::die::parameter_types() const {
+    std::vector<type> ret;
+
+    if (abbrev_->tag != DW_TAG_subprogram) return ret;
+
+    for (auto& c : children()) {
+        if (c.abbrev_entry()->tag == DW_TAG_formal_parameter) {
+            ret.push_back(c[DW_AT_type].as_type());
+        }
+    }
+
+    return ret;
+}
+
+std::optional<sdb::die>
+sdb::dwarf::get_member_function_definition(
+    const sdb::die& declaration) const {
+    index();
+
+    auto it = member_function_index_.find(declaration.position());
+
+    if (it != member_function_index_.end()) {
+        cursor cur({ it->second.pos, it->second.cu->data().end() });
+
+        auto die = parse_die(*it->second.cu, cur);
+
+        if (die.contains(DW_AT_low_pc) or die.contains(DW_AT_ranges)) {
+            return die;
+        }
+
+        return get_member_function_definition(die);
+    }
+
+    return std::nullopt;
+}

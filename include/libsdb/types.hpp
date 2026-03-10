@@ -31,3 +31,36 @@ namespace sdb {
 			return virt_addr(addr_ - offset);
 		}
 		virt_addr& operator+=(std::int64_t offset) {
+			addr_ += offset;
+			return *this;
+		}
+		virt_addr& operator-=(std::int64_t offset) {
+			addr_ -= offset;
+			return *this;
+		}
+		bool operator==(const virt_addr& other) const {
+			return addr_ == other.addr_;
+		}
+		bool operator!=(const virt_addr& other) const {
+			return addr_ != other.addr_;
+		}
+		bool operator<(const virt_addr& other) const {
+			return addr_ < other.addr_;
+		}
+		bool operator<=(const virt_addr& other) const {
+			return addr_ <= other.addr_;
+		}
+		bool operator>(const virt_addr& other) const {
+			return addr_ > other.addr_;
+		}
+		bool operator>=(const virt_addr& other) const {
+			return addr_ >= other.addr_;
+		}
+
+		file_addr to_file_addr(const elf& obj) const;
+		file_addr to_file_addr(const elf_collection& elves) const;
+	private:
+		std::uint64_t addr_ = 0;
+	};
+
+	class file_addr {

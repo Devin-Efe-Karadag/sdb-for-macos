@@ -428,3 +428,88 @@ namespace sdb {
 			const std::byte* start;
 			const std::byte* search_table;
 			std::size_t count;
+			std::uint8_t encoding;
+			call_frame_information* parent;
+			const std::byte* operator[](file_addr address) const;
+		};
+
+		call_frame_information(const dwarf* dwarf, eh_hdr hdr)
+			: dwarf_(dwarf),  eh_hdr_(hdr) {
+			eh_hdr_.parent = this;
+		}
+
+		call_frame_information() = delete;
+		call_frame_information(const call_frame_information&) = delete;
+		call_frame_information& operator=(const call_frame_information&) = delete;
+
+		const dwarf& dwarf_info() const { return *dwarf_; }
+
+		const common_information_entry& get_cie(file_offset at) const;
+
+		registers unwind(
+			const process& proc,
+			file_addr pc,
+			registers& regs) const;
+
+	private:
+		const dwarf* dwarf_;
+		mutable std::unordered_map<std::uint32_t, common_information_entry> cie_map_;
+		eh_hdr eh_hdr_;
+	};
+
+	class dwarf {
+	public:
+		dwarf(const elf& parent);
+		const elf* elf_file() const { return elf_; }
+		const std::unordered_map<std::uint64_t, abbrev>& get_abbrev_table(
+			std::size_t offset);
+		const std::vector<std::unique_ptr<compile_unit>>&
+			compile_units() const { return compile_units_; }
+
+		const compile_unit* compile_unit_containing_address(
+			file_addr address) const;
+		std::optional<die> function_containing_address(
+			file_addr address) const;
+
+		std::vector<die> find_functions(std::string name) const;
+		std::optional<die> find_global_variable(std::string name) const;
+
+		line_table::iterator line_entry_at_address(file_addr address) const {
+			auto cu = compile_unit_containing_address(address);
+			if (!cu) return {};
+			return cu->lines().get_entry_by_address(address);
+		}
+
+		std::vector<die> inline_stack_at_address(file_addr address) const;
+		const call_frame_information& cfi() const { return *cfi_; }
+
+		std::optional<die> find_local_variable(std::string name, file_addr pc) const;
+		std::vector<die> scopes_at_address(file_addr address) const;
+
+		std::optional<die> get_member_function_definition(
+			const sdb::die& declaration) const;
+
+	private:
+		void index() const;
+		void index_die(const die& current, bool in_function = false) const;
+
+		const elf* elf_;
+		std::unordered_map<std::size_t,
+			std::unordered_map<std::uint64_t, abbrev>> abbrev_tables_;
+		std::vector<std::unique_ptr<compile_unit>> compile_units_;
+
+		struct index_entry {
+			const compile_unit* cu;
+			const std::byte* pos;
+		};
+		mutable std::unordered_multimap<std::string, index_entry>
+			function_index_;
+		std::unique_ptr<call_frame_information> cfi_;
+		mutable std::unordered_multimap<std::string, index_entry>
+			global_variable_index_;
+		mutable std::unordered_map<const std::byte*, index_entry> 
+			member_function_index_;
+	};
+}
+
+#endif
