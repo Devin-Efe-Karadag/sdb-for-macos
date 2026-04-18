@@ -873,3 +873,33 @@ namespace {
 				if (tag == DW_TAG_variable or tag == DW_TAG_formal_parameter and
 					!name.empty() and !seen.count(name)) {
 					auto loc = var[DW_AT_location].as_evaluated_location(
+						target.get_process(), target.get_stack().current_frame().regs, false);
+					auto type = var[DW_AT_type].as_type();
+					auto value = target.read_location_data(loc, type.byte_size());
+					auto str = sdb::typed_data{ std::move(value), type }
+					.visualize(target.get_process());
+					fmt::print("{}: {}\n", name, str);
+					seen.insert(name);
+				}
+			}
+		}
+	}
+
+	void handle_variable_read_command(
+		sdb::target& target, const std::vector<std::string>& args) {
+		auto name = args[2];
+		auto pc = target.get_pc_file_address();
+		auto data = target.resolve_indirect_name(name, pc);
+		auto str = data.variable->visualize(target.get_process());
+		fmt::print("Value: {}\n", str);
+	}
+
+	void handle_variable_location_command(
+		sdb::target& target, const std::vector<std::string>& args) {
+		auto name = args[2];
+		auto pc = target.get_pc_file_address();
+		auto var = target.find_variable(name, pc);
+		if (!var) {
+			std::cerr << "Variable not found\n";
+			return;
+		}

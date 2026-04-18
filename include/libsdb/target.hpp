@@ -124,3 +124,21 @@ namespace sdb {
 
             std::uint64_t id;
         };
+
+        std::optional<evaluate_expression_result> evaluate_expression(
+            std::string_view expr,
+
+            std::optional<pid_t> otid = std::nullopt);
+
+        const typed_data& get_expression_result(std::size_t i) const;
+    private:
+        target(std::unique_ptr<process> proc, std::unique_ptr<elf> obj)
+            : process_(std::move(proc))
+            , main_elf_(obj.get()) {
+            elves_.push(std::move(obj));
+
+            auto pid = process_->pid();
+
+            for (auto& [tid, state] : process_->thread_states()) {
+                threads_.emplace(tid, thread(&state, stack{ this, tid }));
+            }

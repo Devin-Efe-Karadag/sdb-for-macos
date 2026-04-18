@@ -10,3 +10,9 @@ sdb::virt_addr sdb::file_addr::to_virt_addr() const {
     if (!section) return virt_addr{};
 
     return virt_addr{ addr_ + elf_->load_bias().addr() };
+}
+
+sdb::file_addr sdb::virt_addr::to_file_addr(const elf& obj) const {
+    auto section = obj.get_section_containing_address(*this);
+
+    if (!section) return file_addr{};
