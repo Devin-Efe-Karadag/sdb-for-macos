@@ -290,3 +290,100 @@ std::uint64_t sdb::process::image_load_address() const {
         auto k=mach_vm_region(task_,&addr,&size,VM_REGION_BASIC_INFO_64,reinterpret_cast<vm_region_info_t>(&info),&n,&object);if(k!=KERN_SUCCESS)break;
 
         if(object)mach_port_deallocate(mach_task_self(),object);
+
+        if(info.protection&VM_PROT_READ && size>=sizeof(mach_header_64)){
+            try { auto h=read_memory_as<mach_header_64>(virt_addr(addr)); if(h.magic==MH_MAGIC_64&&h.filetype==MH_EXECUTE)return addr; }
+            catch(const sdb::error&) { }
+        }
+        addr+=size;
+    }error::send("Cannot find executable Mach-O image");
+}
+int sdb::process::set_hardware_stoppoint(virt_addr a,stoppoint_mode mode,std::size_t size){
+    bool execute=mode==stoppoint_mode::execute;
+
+    if(size!=1&&size!=2&&size!=4&&size!=8)error::send("Watchpoint size must be 1, 2, 4, or 8");
+
+    if(execute&&a.addr()%4)error::send("Hardware breakpoint must be instruction aligned");
+
+    if(!execute&&(a.addr()%size))error::send("Watchpoint must be aligned to its size");
+    auto& control=execute?debug_state_.__bcr:debug_state_.__wcr;
+    auto& values=execute?debug_state_.__bvr:debug_state_.__wvr;
+
+    for(int i=0;i<16;++i)if(!(control[i]&1)){
+        auto old=debug_state_;
+        values[i]=execute?a.addr():(a.addr()&~7ULL);
+        control[i]=execute?(1|2<<1|15<<5):(1|2<<1|(mode==stoppoint_mode::write?2:3)<<3|(((1ULL<<size)-1)<<(a.addr()%8))<<5);
+        try{for(auto [tid,port]:ports_)check(thread_set_state(port,ARM_DEBUG_STATE64,reinterpret_cast<thread_state_t>(&debug_state_),ARM_DEBUG_STATE64_COUNT),"set hardware stoppoint");}
+        catch(...){debug_state_=old;for(auto [tid,port]:ports_)thread_set_state(port,ARM_DEBUG_STATE64,reinterpret_cast<thread_state_t>(&debug_state_),ARM_DEBUG_STATE64_COUNT);throw;}
+
+        return execute?i:i+16;
+    }error::send("No hardware stoppoint slots available");
+}
+int sdb::process::set_hardware_breakpoint(breakpoint_site::id_type,virt_addr a){return set_hardware_stoppoint(a,stoppoint_mode::execute,4);}
+int sdb::process::set_watchpoint(watchpoint::id_type,virt_addr a,stoppoint_mode m,std::size_t n){return set_hardware_stoppoint(a,m,n);}
+void sdb::process::clear_hardware_stoppoint(int i){if(i<0||i>=32)error::send("Invalid hardware slot");if(i<16)debug_state_.__bcr[i]=0;else debug_state_.__wcr[i-16]=0;for(auto [tid,port]:ports_)check(thread_set_state(port,ARM_DEBUG_STATE64,reinterpret_cast<thread_state_t>(&debug_state_),ARM_DEBUG_STATE64_COUNT),"clear hardware stoppoint");}
+std::variant<sdb::breakpoint_site::id_type,sdb::watchpoint::id_type> sdb::process::get_current_hardware_stoppoint(std::optional<pid_t> tid)const{
+    std::optional<std::variant<breakpoint_site::id_type,watchpoint::id_type>> result;
+    breakpoint_sites_.for_each([&](auto& b){if(b.is_enabled()&&b.is_hardware()&&b.address()==get_pc(tid))result.emplace(std::in_place_index<0>,b.id());});
+    watchpoints_.for_each([&](auto& w){if(w.is_enabled()&&w.hardware_register_index_==hit_slot_)result.emplace(std::in_place_index<1>,w.id());});
+
+    if(!result)error::send("No matching hardware stoppoint");return *result;
+}
+sdb::registers sdb::process::inferior_call(virt_addr func,virt_addr ret,const registers& restore,std::optional<pid_t> tid){
+    auto t=tid.value_or(current_thread_);auto& regs=get_registers(t);
+
+    bool created=!breakpoint_sites_.contains_address(ret);
+    auto& bp=created?create_breakpoint_site(ret,false,true):breakpoint_sites_.get_by_address(ret);
+
+    bool enabled=bp.is_enabled();bp.enable();
+    try{
+        regs.write_by_id(register_id::lr,ret.addr());set_pc(func,t);resume(t);auto reason=wait_on_signal(t);
+
+        if(reason.reason!=process_state::stopped||get_pc(t)!=ret)error::send("Inferior call did not reach its return breakpoint");
+
+        auto result=regs;regs=restore;regs.flush();
+
+        if(created)breakpoint_sites_.remove_by_address(ret);else if(!enabled)bp.disable();
+
+        if(target_)target_->notify_stop(reason);return result;
+    }catch(...){if(state_==process_state::stopped){regs=restore;regs.flush();if(created)breakpoint_sites_.remove_by_address(ret);else if(!enabled)bp.disable();}throw;}
+}
+
+sdb::breakpoint_site& sdb::process::create_breakpoint_site(
+    virt_addr address, bool hardware, bool internal) {
+    if (breakpoint_sites_.contains_address(address)) {
+        error::send("Breakpoint site already created at address " +
+            std::to_string(address.addr()));
+    }
+
+    return breakpoint_sites_.push(
+        std::unique_ptr<breakpoint_site>(
+            new breakpoint_site(*this, address, hardware, internal)));
+}
+
+sdb::watchpoint&
+sdb::process::create_watchpoint(virt_addr address, stoppoint_mode mode, std::size_t size) {
+    if (watchpoints_.contains_address(address)) {
+        error::send("Watchpoint already created at address " +
+            std::to_string(address.addr()));
+    }
+
+    return watchpoints_.push(
+        std::unique_ptr<watchpoint>(new watchpoint(*this, address, mode, size)));
+}
+
+sdb::breakpoint_site&
+sdb::process::create_breakpoint_site(
+    breakpoint* parent, breakpoint_site::id_type id, virt_addr address,
+
+    bool hardware, bool internal) {
+    if (breakpoint_sites_.contains_address(address)) {
+        error::send("Breakpoint site already created at address " +
+            std::to_string(address.addr()));
+    }
+
+    return breakpoint_sites_.push(
+        std::unique_ptr<breakpoint_site>(
+            new breakpoint_site(
+                parent, id, *this, address, hardware, internal)));
+}

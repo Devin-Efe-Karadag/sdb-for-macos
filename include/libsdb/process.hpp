@@ -254,3 +254,14 @@ namespace sdb {
 
 		void send_continue(pid_t tid);
 		void step_over_breakpoint(pid_t tid);
+
+        mach_port_t task_ = MACH_PORT_NULL;
+
+        std::unordered_map<pid_t, mach_port_t> ports_;
+
+        bool stepping_ = false;
+        pid_t main_thread_ = 0;
+
+        int pending_signal_ = 0;
+
+        bool tracing_syscalls_ = false;

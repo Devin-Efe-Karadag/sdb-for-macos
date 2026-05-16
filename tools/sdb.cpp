@@ -903,3 +903,34 @@ namespace {
 			std::cerr << "Variable not found\n";
 			return;
 		}
+
+		auto loc = var.value()[DW_AT_location].as_evaluated_location(
+			target.get_process(), target.get_stack().current_frame().regs, false);
+
+		auto print_simple_location = [](auto* loc) {
+			if (auto reg_loc = std::get_if<sdb::dwarf_expression::register_result>(loc)) {
+				auto name = sdb::register_info_by_dwarf(reg_loc->reg_num).name;
+				fmt::print("Register: {}\n", name);
+			}
+			else if (auto addr_res = std::get_if<sdb::dwarf_expression::address_result>(loc)) {
+				fmt::print("Address: {:#x}\n", addr_res->address.addr());
+			}
+			else {
+				fmt::print("None");
+			}
+		};
+
+		if (auto simple_loc = std::get_if<sdb::dwarf_expression::simple_location>(&loc)) {
+			print_simple_location(simple_loc);
+		}
+		else if (auto pieces_res = std::get_if<sdb::dwarf_expression::pieces_result>(&loc)) {
+			for (auto& piece : pieces_res->pieces) {
+				fmt::print("Piece: offset = {}, bit size = {}, location = ",
+					piece.offset, piece.bit_size);
+				print_simple_location(&piece.location);
+			}
+		}
+	}
+
+	void handle_variable_command(
+		sdb::target& target, const std::vector<std::string>& args) {
