@@ -934,3 +934,33 @@ namespace {
 
 	void handle_variable_command(
 		sdb::target& target, const std::vector<std::string>& args) {
+		if (args.size() < 2) {
+			print_help({ "help", "variable" });
+			return;
+		}
+
+		if (is_prefix(args[1], "locals")) {
+			handle_variable_locals_command(target);
+			return;
+		}
+
+		if (args.size() < 3) {
+			print_help({ "help", "variable" });
+			return;
+		}
+
+		if (is_prefix(args[1], "read")) {
+			handle_variable_read_command(target, args);
+		}
+		else if (is_prefix(args[1], "location")) {
+			handle_variable_location_command(target, args);
+		}
+	}
+
+	void handle_command(std::unique_ptr<sdb::target>& target,
+		std::string_view line) {
+		auto args = split(line, ' ');
+		auto command = args[0];
+		auto process = &target->get_process();
+
+		if (is_prefix(command, "continue")) {

@@ -97,3 +97,36 @@ namespace sdb {
 			return addr_ != other.addr_ or elf_ != other.elf_;
 		}
 		bool operator<(const file_addr& other) const {
+			assert(elf_ == other.elf_);
+			return addr_ < other.addr_;
+		}
+		bool operator<=(const file_addr& other) const {
+			assert(elf_ == other.elf_);
+			return addr_ <= other.addr_;
+		}
+		bool operator>(const file_addr& other) const {
+			assert(elf_ == other.elf_);
+			return addr_ > other.addr_;
+		}
+		bool operator>=(const file_addr& other) const {
+			assert(elf_ == other.elf_);
+			return addr_ >= other.addr_;
+		}
+
+		virt_addr to_virt_addr() const;
+
+	private:
+		const elf* elf_ = nullptr;
+		std::uint64_t addr_ = 0;
+	};
+
+	class file_offset {
+	public:
+		file_offset() = default;
+		file_offset(const elf& obj, std::uint64_t off)
+			: elf_(&obj), off_(off) {}
+
+		std::uint64_t off() const {
+			return off_;
+		}
+		const elf* elf_file() const {

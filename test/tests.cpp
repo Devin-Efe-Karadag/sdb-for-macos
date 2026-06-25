@@ -37,6 +37,13 @@ int main(int argc,char** argv){try{
         auto addr=symbol(*t,"watched");long value=19;p.write_memory(addr,sdb::to_byte_span(value));require(p.read_memory_as<long>(addr)==19,"memory round trip");
 
         auto pc=p.get_pc();auto original=p.read_memory(pc,4);auto& bp=p.create_breakpoint_site(pc);bp.enable();require(p.read_memory(pc,4)!=original,"trap missing");require(p.read_memory_without_traps(pc,4)==original,"trap overlay incorrect");bp.disable();require(p.read_memory(pc,4)==original,"trap restoration incorrect");
+
+        auto instructions=sdb::disassembler(p).disassemble(2);require(instructions.size()==2&&instructions[1].address.addr()==pc.addr()+4,"ARM64 disassembly");
+        p.step_instruction();require(p.get_pc()!=pc,"instruction did not advance");
+    }else if(test=="source"){
+        auto& bp=t->create_function_breakpoint("inner");bp.enable();p.resume();auto stop=p.wait_on_signal();require(stop.is_breakpoint(),"function breakpoint missed");
+        require(t->get_stack().frames().size()>=3,"missing stack frames");auto line=t->line_entry_at_pc()->line;t->step_over();require(t->line_entry_at_pc()->line!=line,"next did not advance source line");
+
         auto result=t->evaluate_expression("add(2,3)");require(result&&result->return_value.visualize(p)=="5","integer inferior call");
 
         auto floating=t->evaluate_expression("add_double(1.5,2.5)");require(floating&&floating->return_value.visualize(p)=="4","floating inferior call");

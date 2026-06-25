@@ -21,3 +21,6 @@ int main(int argc,char** argv){
     int result=outer(4);
 
     return result==8 ? 0:1;
+}
+struct pair_double{double a,b;};
+struct triple_long{long a,b,c;};

@@ -13,6 +13,9 @@ bool collect(sdb::type value,std::size_t base,sdb::arm64_hfa& hfa,unsigned depth
 
     if(tag==DW_TAG_base_type){
         if(!die.contains(DW_AT_encoding)||die[DW_AT_encoding].as_int()!=DW_ATE_float)return false;
+
+        auto size=value.byte_size();if(size!=4&&size!=8)return false;
+
         if(hfa.element_size&&hfa.element_size!=size)return false;
         hfa.element_size=size;hfa.offsets.push_back(base);return hfa.offsets.size()<=4;
     }
@@ -31,5 +34,7 @@ bool collect(sdb::type value,std::size_t base,sdb::arm64_hfa& hfa,unsigned depth
         if(child.abbrev_entry()->tag==DW_TAG_member&&child.contains(DW_AT_data_member_location)){
             if(child.contains(DW_AT_bit_size)||!collect(child[DW_AT_type].as_type(),base+child[DW_AT_data_member_location].as_int(),hfa,depth+1))return false;
         }else if(child.abbrev_entry()->tag==DW_TAG_inheritance)return false;
+    }return !hfa.offsets.empty()&&hfa.offsets.size()<=4;
+}
 }
 std::optional<sdb::arm64_hfa> sdb::classify_arm64_hfa(type value){arm64_hfa hfa;if(!collect(value,0,hfa,0))return std::nullopt;return hfa;}
