@@ -24,3 +24,6 @@ int main(int argc,char** argv){
 }
 struct pair_double{double a,b;};
 struct triple_long{long a,b,c;};
+pair_double pair_input{1.5,2.5};
+triple_long triple_input{2,3,4};
+__attribute__((noinline)) pair_double pair_add(pair_double p){return {p.a+1,p.b+2};}

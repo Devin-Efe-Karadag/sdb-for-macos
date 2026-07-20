@@ -130,3 +130,36 @@ namespace sdb {
 			return off_;
 		}
 		const elf* elf_file() const {
+			return elf_;
+		}
+
+	private:
+		const elf* elf_ = nullptr;
+		std::uint64_t off_ = 0;
+	};
+
+	template <class T>
+	class span {
+	public:
+		span() = default;
+		span(T* data, std::size_t size) : data_(data), size_(size) {}
+		span(T* data, T* end) : data_(data), size_(end - data) {}
+		template <class U>
+		span(const std::vector<U>& vec) : data_(vec.data()), size_(vec.size()) {}
+
+		T* begin() const { return data_; }
+		T* end() const { return data_ + size_; }
+		std::size_t size() const { return size_; }
+		T& operator[](std::size_t n) { return *(data_ + n); }
+
+	private:
+		T* data_ = nullptr;
+		std::size_t size_ = 0;
+	};
+
+	enum class stoppoint_mode {
+		write, read_write, execute
+	};
+}
+
+#endif

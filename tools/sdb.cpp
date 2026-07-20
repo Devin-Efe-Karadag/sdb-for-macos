@@ -964,3 +964,33 @@ namespace {
 		auto process = &target->get_process();
 
 		if (is_prefix(command, "continue")) {
+			process->resume_all_threads();
+			auto reason = process->wait_on_signal();
+			handle_stop(*target, reason);
+		}
+		else if (is_prefix(command, "next")) {
+			auto reason = target->step_over();
+			handle_stop(*target, reason);
+		}
+		else if (is_prefix(command, "finish")) {
+			auto reason = target->step_out();
+			handle_stop(*target, reason);
+		}
+		else if (is_prefix(command, "step")) {
+			auto reason = target->step_in();
+			handle_stop(*target, reason);
+		}
+		else if (is_prefix(command, "stepi")) {
+			auto reason = process->step_instruction();
+			handle_stop(*target, reason);
+		}
+		else if (is_prefix(command, "memory")) {
+			handle_memory_command(*process, args);
+		}
+		else if (is_prefix(command, "register")) {
+			handle_register_command(*target, args);
+		}
+		else if (is_prefix(command, "breakpoint")) {
+			handle_breakpoint_command(*target, args);
+		}
+		else if (is_prefix(command, "watchpoint")) {
