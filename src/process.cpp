@@ -187,6 +187,49 @@ void sdb::process::write_memory(virt_addr addr,span<const std::byte> data) {
         if(region>at) error::send("Write crosses unmapped memory");
 
         auto amount=std::min<std::size_t>(data.size()-offset,region+region_size-at);
+
+        bool protect=!(info.protection&VM_PROT_WRITE);
+
+        if(protect) check(mach_vm_protect(task_,at,amount,false,VM_PROT_READ|VM_PROT_WRITE|VM_PROT_COPY),"make memory writable");
+
+        auto result=mach_vm_write(task_,at,reinterpret_cast<vm_offset_t>(data.begin()+offset),static_cast<mach_msg_type_number_t>(amount));
+
+        auto restored=protect?mach_vm_protect(task_,at,amount,false,info.protection):KERN_SUCCESS;
+        check(result,"write memory"); check(restored,"restore memory protection"); offset+=amount;
+    }
+}
+std::vector<std::byte> sdb::process::read_memory_without_traps(virt_addr a,std::size_t n) const {
+    auto bytes=read_memory(a,n);
+    breakpoint_sites_.for_each([&](auto& bp){if(!bp.is_enabled()||bp.is_hardware())return; for(unsigned i=0;i<4;++i){auto p=bp.address().addr()+i;if(p>=a.addr()&&p-a.addr()<n)bytes[p-a.addr()]=reinterpret_cast<const std::byte*>(&bp.saved_data_)[i];}});
+
+    return bytes;
+}
+std::string sdb::process::read_string(virt_addr a) const {
+    std::string s;
+
+    for(std::size_t i=0;i<1024*1024;++i){auto c=read_memory_as<char>(a+i);if(!c)return s;s+=c;}
+    error::send("Unterminated target string");
+}
+sdb::stop_reason::stop_reason(pid_t t,int s):tid(t){if(WIFEXITED(s)){reason=process_state::exited;info=WEXITSTATUS(s);}else if(WIFSIGNALED(s)){reason=process_state::terminated;info=WTERMSIG(s);}else{reason=process_state::stopped;info=WSTOPSIG(s);}}
+void sdb::process::send_continue(pid_t) {trace(PT_CONTINUE,pid_,std::exchange(pending_signal_,0));state_=process_state::running;for(auto& [t,s]:threads_)s.state=state_;}
+void sdb::process::resume(std::optional<pid_t> tid) {
+    if(state_!=process_state::stopped)error::send("Process is not stopped");
+
+    auto t=tid.value_or(current_thread_);
+
+    if(syscall_catch_policy_.get_mode()!=syscall_catch_policy::none && !tracing_syscalls_){
+        tracing_syscalls_=true;
+        try{
+            for(;;){
+                auto instruction=read_memory_as<std::uint32_t>(get_pc(t));
+
+                auto id=get_registers(t).read_by_id_as<std::uint64_t>(register_id::x16);
+                auto& selected=syscall_catch_policy_.get_to_catch();
+
+                bool svc=(instruction&0xffe0001f)==0xd4000001;
+
+                bool match=svc&&(syscall_catch_policy_.get_mode()==syscall_catch_policy::all||std::find(selected.begin(),selected.end(),static_cast<int>(id))!=selected.end());
+
                 if(match&&!expecting_syscall_exit_){
                     syscall_information info{};info.id=id;info.entry=true;
 

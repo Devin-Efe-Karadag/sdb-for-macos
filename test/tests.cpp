@@ -54,6 +54,8 @@ int main(int argc,char** argv){try{
 
         auto triple=t->evaluate_expression("triple_add(triple_input)");require(triple&&sdb::from_bytes<long>(triple->return_value.data_ptr()+16)==7,"indirect aggregate argument/return");
         t->step_out();require(t->function_name_at_address(p.get_pc()).find("outer")!=std::string::npos,"finish did not return to caller");
+        p.resume();require(p.wait_on_signal().reason==sdb::process_state::exited,"process did not exit");
+    }else if(test=="watchpoint"){
         auto addr=symbol(*t,"watched");auto& w=p.create_watchpoint(addr,sdb::stoppoint_mode::write,8);w.enable();p.resume();auto stop=p.wait_on_signal();
         require(stop.reason==sdb::process_state::stopped,"watchpoint missed");require(stop.trap_reason==sdb::trap_type::hardware_break,"watchpoint not classified");w.disable();p.resume();require(p.wait_on_signal().reason==sdb::process_state::exited,"watchpoint resume failed");
     }else if(test=="hardware"){

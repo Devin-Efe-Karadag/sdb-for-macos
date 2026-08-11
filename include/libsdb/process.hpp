@@ -265,3 +265,15 @@ namespace sdb {
         int pending_signal_ = 0;
 
         bool tracing_syscalls_ = false;
+
+        std::optional<stop_reason> queued_stop_;
+        arm_debug_state64_t debug_state_{};
+
+        int hit_slot_ = -1;
+		pid_t pid_ = 0;
+		bool terminate_on_end_ = true;
+		process_state state_ = process_state::stopped;
+		bool is_attached_ = true;
+		std::unique_ptr<registers> registers_;
+		stoppoint_collection<breakpoint_site> breakpoint_sites_;
+		stoppoint_collection<watchpoint> watchpoints_;

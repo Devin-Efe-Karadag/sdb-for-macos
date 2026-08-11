@@ -994,3 +994,33 @@ namespace {
 			handle_breakpoint_command(*target, args);
 		}
 		else if (is_prefix(command, "watchpoint")) {
+			handle_watchpoint_command(*process, args);
+		}
+		else if (is_prefix(command, "step")) {
+			auto reason = process->step_instruction();
+			handle_stop(*target, reason);
+		}
+		else if (is_prefix(command, "disassemble")) {
+			handle_disassemble_command(*process, args);
+		}
+		else if (is_prefix(command, "catchpoint")) {
+			handle_catchpoint_command(*process, args);
+		}
+		else if (is_prefix(command, "thread")) {
+			handle_thread_command(*target, args);
+		}
+		else if (is_prefix(command, "up")) {
+			target->get_stack().up();
+			print_code_location(*target);
+		}
+		else if (is_prefix(command, "down")) {
+			target->get_stack().down();
+			print_code_location(*target);
+		}
+		else if (is_prefix(command, "backtrace")) {
+			print_backtrace(*target);
+		}
+		else if (is_prefix(command, "variable")) {
+			handle_variable_command(*target, args);
+		}
+		else if (is_prefix(command, "expression")) {
