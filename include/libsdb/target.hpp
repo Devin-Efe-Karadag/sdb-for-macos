@@ -142,3 +142,20 @@ namespace sdb {
             for (auto& [tid, state] : process_->thread_states()) {
                 threads_.emplace(tid, thread(&state, stack{ this, tid }));
             }
+        }
+
+        void resolve_dynamic_linker_rendezvous();
+        void reload_dynamic_libraries();
+
+        std::unique_ptr<process> process_;
+        elf_collection elves_;
+        elf* main_elf_;
+        stoppoint_collection<breakpoint> breakpoints_;
+        virt_addr dynamic_linker_rendezvous_address_;
+
+        std::unordered_map<pid_t, thread> threads_;
+        mutable std::vector<typed_data> expression_results_;
+    };
+}
+
+#endif

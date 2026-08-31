@@ -1024,3 +1024,33 @@ namespace {
 			handle_variable_command(*target, args);
 		}
 		else if (is_prefix(command, "expression")) {
+			auto expr = line.substr(line.find(' ') + 1);
+			auto ret = target->evaluate_expression(expr);
+			if (ret) {
+				auto str = ret->return_value.visualize(target->get_process());
+				fmt::print("${}: {}\n", ret->id, str);
+			}
+		}
+		else if (is_prefix(command, "help")) {
+			print_help(args);
+		}
+		else {
+			std::cerr << "Unknown command\n";
+		}
+	}
+
+	void main_loop(std::unique_ptr<sdb::target>& target) {
+		char* line = nullptr;
+        std::string previous;
+		while ((line = readline("sdb> ")) != nullptr) {
+			std::string line_str;
+
+			if (line == std::string_view("")) {
+				free(line);
+				if (history_length > 0) {
+					line_str = previous;
+				}
+			}
+			else {
+				line_str = line;
+                previous = line_str;
