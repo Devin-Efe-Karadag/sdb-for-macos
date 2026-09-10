@@ -99,3 +99,17 @@ void sdb::line_breakpoint::resolve() {
         if (should_skip_prologue) {
             ++entry;
         }
+
+        auto load_address = entry->address.to_virt_addr();
+
+        if (!breakpoint_sites_.contains_address(load_address)) {
+            auto& new_site = target_->get_process()
+                .create_breakpoint_site(
+                    this, next_site_id_++, load_address, is_hardware_, is_internal_);
+
+            breakpoint_sites_.push(&new_site);
+
+            if (is_enabled_) new_site.enable();
+        }
+    }
+}

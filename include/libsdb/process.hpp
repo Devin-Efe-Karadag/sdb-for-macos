@@ -277,3 +277,14 @@ namespace sdb {
 		std::unique_ptr<registers> registers_;
 		stoppoint_collection<breakpoint_site> breakpoint_sites_;
 		stoppoint_collection<watchpoint> watchpoints_;
+		syscall_catch_policy syscall_catch_policy_ =
+			syscall_catch_policy::catch_none();
+		bool expecting_syscall_exit_ = false;
+		target* target_ = nullptr;
+		std::unordered_map<pid_t, thread_state> threads_;
+		pid_t current_thread_ = 0;
+		std::function<void(const stop_reason&)> thread_lifecycle_callback_;
+	};
+}
+
+#endif

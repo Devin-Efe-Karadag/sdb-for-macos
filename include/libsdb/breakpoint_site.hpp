@@ -41,3 +41,17 @@ namespace sdb {
 		breakpoint_site(
 			breakpoint* parent, id_type id, process& proc, virt_addr address, bool is_hardware = false, bool is_internal = false);
 		friend process;
+
+		id_type id_;
+		process* process_;
+		virt_addr address_;
+		bool is_enabled_;
+        std::uint32_t saved_data_;
+		bool is_hardware_;
+		bool is_internal_;
+		int hardware_register_index_ = -1;
+		breakpoint* parent_ = nullptr;
+	};
+}
+
+#endif

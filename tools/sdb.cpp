@@ -1054,3 +1054,33 @@ namespace {
 			else {
 				line_str = line;
                 previous = line_str;
+				add_history(line);
+				free(line);
+			}
+
+			if (line_str == "quit" || line_str == "q" || line_str == "exit") break;
+            if (!line_str.empty()) {
+				try {
+					handle_command(target, line_str);
+				}
+				catch (const std::exception& err) {
+					std::cout << err.what() << '\n';
+				}
+			}
+		}
+	}
+}
+
+int main(int argc, const char** argv) {
+	try {
+		auto target = attach(argc, argv);
+		g_sdb_process = &target->get_process();
+		signal(SIGINT, handle_sigint);
+		target->get_process().install_thread_lifecycle_callback(
+			thread_lifecycle_callback);
+		main_loop(target);
+	}
+	catch (const std::exception& err) {
+		std::cout << err.what() << '\n';
+	}
+}

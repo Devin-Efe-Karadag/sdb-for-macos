@@ -174,3 +174,22 @@ namespace sdb {
     void stoppoint_collection<Stoppoint,Owning>::for_each(F f) const {
         for (const auto& point : stoppoints_) {
             f(*point);
+        }
+    }
+
+    template <class Stoppoint, bool Owning>
+
+    std::vector<Stoppoint*> stoppoint_collection<Stoppoint,Owning>::get_in_region(
+        virt_addr low, virt_addr high) const {
+        std::vector<Stoppoint*> ret;
+
+        for (auto& site : stoppoints_) {
+            if (site->in_range(low, high)) {
+                ret.push_back(&*site);
+            }
+        }
+
+        return ret;
+    }
+}
+#endif

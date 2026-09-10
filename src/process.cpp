@@ -180,6 +180,7 @@ void sdb::process::write_memory(virt_addr addr,span<const std::byte> data) {
 
     while(offset<data.size()) {
         mach_vm_address_t region=addr.addr()+offset; mach_vm_size_t region_size=0;
+        vm_region_submap_info_data_64_t info{}; mach_msg_type_number_t n=VM_REGION_SUBMAP_INFO_COUNT_64; natural_t depth=1024;
         check(mach_vm_region_recurse(task_,&region,&region_size,&depth,reinterpret_cast<vm_region_recurse_info_t>(&info),&n),"find memory region");
 
         auto at=addr.addr()+offset;

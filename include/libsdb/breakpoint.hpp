@@ -105,3 +105,18 @@ namespace sdb {
 	};
 
 	class address_breakpoint : public breakpoint {
+	public:
+		void resolve() override;
+		virt_addr address() const { return address_; }
+	private:
+		friend target;
+		address_breakpoint(
+			target& tgt, virt_addr address,
+			bool is_hardware = false, bool is_internal = false)
+			: breakpoint(tgt, is_hardware, is_internal), address_(address) {
+			resolve();
+		}
+		virt_addr address_;
+	};
+}
+#endif
