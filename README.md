@@ -1,42 +1,91 @@
 # sdb for macOS
 
-This is my Apple Silicon version of `sdb`, the debugger developed in *Building
-a Debugger*. The original project follows Linux on x86-64; this version uses
-Darwin `ptrace`, Mach task APIs, ARM64 debug registers, Mach-O files, and dSYM
-bundles instead.
+`sdb` is a small command-line debugger for Apple Silicon Macs. It can pause a
+program, show where it stopped, inspect variables and registers, and continue
+one line or instruction at a time.
 
-The debugger can launch a program or attach to one that is already running.
-It has software and hardware breakpoints, watchpoints, register and memory
-commands, single stepping, syscall catchpoints, and an LLVM-backed
-disassembler. Source breakpoints, local variables, backtraces, `next`, and
-`finish` come from the target's DWARF information. It currently expects DWARF
-version 4.
+I started from the debugger built in *Building a Debugger*, which targets
+Linux on x86-64, and replaced the platform-specific parts with Darwin
+`ptrace`, Mach APIs, ARM64 debug registers, Mach-O parsing, and dSYM support.
 
-## Building it
+## Before you start
 
-The dependencies are available through Homebrew:
+This project only supports macOS on ARM64. You will need the Xcode command-line
+tools and [Homebrew](https://brew.sh/). Install the remaining dependencies with:
 
 ```sh
 brew install cmake pkg-config libedit fmt llvm
+```
+
+## Build sdb
+
+From the repository directory:
+
+```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build -j
+```
+
+The debugger will be at `build/tools/sdb`. CMake signs it with the debugger
+entitlement required by macOS.
+
+## Try a debugging session
+
+Create a small program called `hello.c`:
+
+```c
+#include <stdio.h>
+
+static void greet(const char *name) {
+    printf("Hello, %s!\n", name);
+}
+
+int main(void) {
+    greet("debugger");
+    return 0;
+}
+```
+
+Compile it with debug information. DWARF 4 is required because newer DWARF
+versions are not supported yet.
+
+```sh
+clang -g -gdwarf-4 -O0 hello.c -o hello
+dsymutil ./hello
+./build/tools/sdb ./hello
+```
+
+At the `sdb>` prompt, try:
+
+```text
+breakpoint set greet
+continue
+backtrace
+variable locals
+next
+continue
+quit
+```
+
+`breakpoint set greet` stops when `greet` is entered. `backtrace` shows the
+call stack, `variable locals` prints variables in the selected frame, and
+`next` executes the current source line without stepping into another
+function. Run `help` inside the debugger for the complete command list.
+
+To attach to an already-running process instead, use:
+
+```sh
+./build/tools/sdb -p PID
+```
+
+macOS may refuse attachment to protected or unsigned processes. Starting a
+program through `sdb` is the easiest first test.
+
+## Tests
+
+```sh
 ctest --test-dir build --output-on-failure
 ```
 
-CMake signs the resulting binary with the debugger entitlement. The project is
-macOS/ARM64-only.
-
-## Debugging a program
-
-Compile the program with debug information and leave optimization off while
-stepping through it:
-
-```sh
-clang -g -gdwarf-4 -O0 program.c -o program
-dsymutil ./program
-./build/tools/sdb ./program
-```
-
-To attach instead, use `./build/tools/sdb -p PID`. Once inside `sdb`, `help`
-prints the command list and `help breakpoint`, `help register`, and the other
-subcommands show their own usage.
+The test suite covers registers, source stepping, breakpoints, watchpoints,
+threads, syscalls, dynamic libraries, and process attachment.
